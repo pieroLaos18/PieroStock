@@ -1,40 +1,43 @@
 <template>
-  <header :class="['app-bar', { 'collapsed': isSidebarCollapsed }]">
-    <div class="left-section">
-      <span class="page-title">{{ title || 'Panel Principal' }}</span>
+  <header :class="['app-bar', 'demo-topbar', { 'collapsed': isSidebarCollapsed }]">
+    <div class="left-section breadcrumb">
+      <button v-if="isSmallScreen" class="icon-btn mobile-menu-btn" type="button" :aria-label="sidebarOpen ? 'Cerrar menú' : 'Abrir menú'" :aria-expanded="sidebarOpen" aria-controls="app-sidebar" @click="$emit('toggle-sidebar')">
+        <i :class="sidebarOpen ? 'fas fa-xmark' : 'fas fa-bars'" aria-hidden="true"></i>
+      </button>
+      <span class="workspace-label">Mi negocio</span>
+      <i class="fas fa-chevron-right breadcrumb-chevron" aria-hidden="true"></i>
+      <strong class="page-title">{{ title || 'Escritorio' }}</strong>
     </div>
 
-    <div class="right-section">
-      <button class="icon-btn notification-btn" @click="$emit('open-notifications')">
-        <i class="fas fa-bell"></i>
+    <div class="right-section topbar-right">
+      <button class="icon-btn notification-btn" type="button" :aria-label="notificationCount ? `Notificaciones, ${notificationCount} alertas` : 'Notificaciones'" title="Notificaciones" @click="$emit('open-notifications')">
+        <i class="fas fa-bell" aria-hidden="true"></i>
         <span v-if="notificationCount > 0" class="notification-badge">{{ notificationCount }}</span>
       </button>
 
-      <button class="icon-btn theme-toggle" @click="$emit('toggle-theme')">
-        <i :class="theme === 'dark' ? 'fas fa-moon' : 'fas fa-sun'"></i>
+      <button class="icon-btn theme-toggle" type="button" :aria-label="theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'" :title="theme === 'dark' ? 'Tema claro' : 'Tema oscuro'" @click="$emit('toggle-theme')">
+        <i :class="theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon'" aria-hidden="true"></i>
       </button>
 
       <div class="user-dropdown">
-        <img 
-          :src="fullUserImage" 
-          class="user-image" 
-          alt="User"
-          @error="handleImageError"
-          @load="handleImageLoad"
-        />
-        <button @click="$emit('show-profile')" class="user-name">
+        <button class="profile-avatar-btn" type="button" aria-label="Abrir Mi perfil" title="Mi perfil" @click="$emit('show-profile')">
+          <img
+            :src="fullUserImage"
+            class="user-image"
+            :alt="`Foto de ${userName || 'usuario'}`"
+            @error="handleImageError"
+          />
+        </button>
+        <button type="button" @click="$emit('show-profile')" class="user-name" aria-label="Abrir Mi perfil" title="Mi perfil">
           {{ userName }}
         </button>
-        <button @click="$emit('logout')" class="icon-btn logout-btn" title="Cerrar sesión">
-          <i class="fas fa-sign-out-alt"></i>
+        <button type="button" @click="$emit('logout')" class="icon-btn logout-btn" title="Cerrar sesión" aria-label="Cerrar sesión">
+          <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
         </button>
       </div>
     </div>
   </header>
 
-  <div class="content-wrapper">
-    <slot></slot>
-  </div>
 </template>
 
 <script>
@@ -47,11 +50,14 @@ export default {
     notificationCount: Number,
     fullUserImage: String,
     userName: String,
-    isSidebarCollapsed: Boolean
+    isSidebarCollapsed: Boolean,
+    isSmallScreen: Boolean,
+    sidebarOpen: Boolean
   },
   emits: [
     'open-notifications',
     'toggle-theme',
+    'toggle-sidebar',
     'logout',
     'show-profile'
   ],
@@ -61,27 +67,15 @@ export default {
       fallbackImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMzIiIGZpbGw9IiMzYjgyZjYiLz4KPGNpcmNsZSBjeD0iMzIiIGN5PSIyNCIgcj0iMTAiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik0xNiA1MkMxNiA0NC4yNjggMjMuMjY4IDM4IDMyIDM4UzQ4IDQ0LjI2OCA0OCA1MiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+'
     };
   },
-  watch: {
-    // Observar cambios en la imagen del usuario
-    fullUserImage: {
-      handler(newImage) {
-        console.log('🖼️ Imagen del usuario actualizada en AppBar:', newImage);
-      },
-      immediate: true
-    }
-  },
   methods: {
     handleImageError(event) {
-      console.warn('❌ Error cargando imagen del usuario en AppBar:', event.target.src);
-      // Intentar primero con imagen local, luego con fallback base64
-      if (event.target.src !== defaultUserImage) {
-        event.target.src = defaultUserImage;
+      const image = event.currentTarget;
+      const defaultImageUrl = new URL(defaultUserImage, window.location.href).href;
+      if (image.src !== defaultImageUrl) {
+        image.src = defaultImageUrl;
       } else {
-        event.target.src = this.fallbackImage;
+        image.src = this.fallbackImage;
       }
-    },
-    handleImageLoad(event) {
-      console.log('✅ Imagen del usuario cargada en AppBar:', event.target.src);
     }
   }
 };
@@ -246,6 +240,114 @@ export default {
     width: 30px;
     height: 30px;
   }
+}
+
+.app-bar.demo-topbar {
+  position: sticky;
+  top: 0;
+  left: auto;
+  z-index: 10;
+  width: 100%;
+  height: 62px;
+  padding: 0 clamp(18px, 3.5vw, 48px);
+  border: 0;
+  border-bottom: 1px solid var(--app-border, #e5ecee);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--app-surface, #fff) 94%, transparent);
+  color: var(--app-ink, #172b3b);
+  box-shadow: none;
+  backdrop-filter: blur(14px);
+}
+
+.demo-topbar .left-section.breadcrumb {
+  gap: 10px;
+  color: var(--app-muted, #738496);
+  font-size: .76rem;
+}
+
+.demo-topbar .breadcrumb-chevron {
+  color: #aab6be;
+  font-size: .61rem;
+}
+
+.demo-topbar .page-title {
+  color: var(--app-ink, #172b3b);
+  font-size: .76rem;
+  font-weight: 670;
+  letter-spacing: 0;
+}
+
+.demo-topbar .right-section.topbar-right {
+  gap: 13px;
+}
+
+.demo-topbar .icon-btn {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--app-border, #e5ecee);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--app-muted, #738496);
+  font-size: .76rem;
+}
+
+.demo-topbar .icon-btn:hover {
+  border-color: #b8d8d4;
+  background: var(--app-accent-soft, #eaf6f4);
+  color: var(--app-accent, #087f83);
+}
+
+.demo-topbar .user-dropdown {
+  gap: 8px;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--app-border, #e5ecee);
+}
+
+.demo-topbar .profile-avatar-btn {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #d7e7e5;
+  border-radius: 50%;
+  background: var(--app-surface-soft, #f7f9fa);
+}
+
+.demo-topbar .user-image {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.demo-topbar .user-name {
+  color: var(--app-ink, #172b3b);
+  font-size: .7rem;
+  font-weight: 680;
+}
+
+.demo-topbar .logout-btn {
+  border: 0;
+  color: #c45f62;
+}
+
+@media (max-width: 900px) {
+  .app-bar.demo-topbar,
+  .app-bar.demo-topbar.collapsed {
+    left: auto;
+    width: 100%;
+    height: 54px;
+    padding: 0 14px;
+  }
+
+  .demo-topbar .right-section.topbar-right { gap: 6px; }
+  .demo-topbar .user-name { display: none; }
+  .demo-topbar .user-dropdown { padding-left: 8px; }
 }
 </style>
 

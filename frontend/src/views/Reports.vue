@@ -1,105 +1,83 @@
 <template>
   <div class="dynamic-content reports-page">
-    <!-- Cabecera mejorada para Reports.vue -->
-    <div class="reports-header">
-      <div class="header-content">
-        <div class="header-left">
-          <div class="header-icon">
-            <i class="fas fa-chart-line"></i>
-          </div>
-          <div class="header-text">
-            <h1>Reportes de Ventas</h1>
-            <p class="header-subtitle">Análisis completo y exportación de datos de ventas</p>
-            <div class="header-stats">
-              <div class="stat-item">
-                <span class="stat-number">{{ reportData.length }}</span>
-                <span class="stat-label">Registros</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ totalAmount }}</span>
-                <span class="stat-label">Total S/</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ uniqueProducts }}</span>
-                <span class="stat-label">Productos</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="header-actions">
-          <button class="btn-generate-report" @click="fetchReport" :disabled="loading">
-            <i class="fas fa-chart-bar"></i>
-            <span>{{ loading ? 'Generando...' : 'Generar Reporte' }}</span>
-          </button>
-        </div>
-      </div>
-      
-      <div class="filters-section">
-        <div class="date-filters">
+    <div class="page-heading">
+      <div><p class="eyebrow">ANÁLISIS</p><h1>Reportes de ventas</h1><p>Consulta resultados y exporta la información de tus ventas.</p></div>
+      <button class="primary-button" @click="fetchReport" :disabled="loading"><i class="fas fa-chart-column"></i> {{ loading ? 'Generando…' : 'Generar reporte' }}</button>
+    </div>
+
+    <section class="metric-grid compact-metrics">
+      <article class="metric-card"><div class="metric-top"><span>Ventas</span><span class="metric-icon teal"><i class="fas fa-receipt"></i></span></div><strong>{{ uniqueSales }}</strong><small class="metric-foot">En el período seleccionado</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Total vendido</span><span class="metric-icon blue"><i class="fas fa-wallet"></i></span></div><strong>S/ {{ totalAmount }}</strong><small class="metric-foot">Suma de ventas válidas</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Productos</span><span class="metric-icon violet"><i class="fas fa-box"></i></span></div><strong>{{ uniqueProducts }}</strong><small class="metric-foot">Incluidos en las ventas</small></article>
+    </section>
+
+    <section class="demo-panel filters-panel reports-filters-panel">
+      <div class="report-filter-heading"><div><span class="results-eyebrow">Período del reporte</span><strong class="report-period-label">{{ periodLabel }}</strong></div><span class="export-label">Exportar como</span></div>
+      <div class="table-toolbar report-toolbar">
           <div class="date-container">
-            <div class="date-wrapper">
-              <i class="fas fa-calendar-alt date-icon"></i>
               <input
                 type="date"
                 v-model="fromDate"
+                :max="toDate || undefined"
                 placeholder="Fecha inicio"
                 class="date-input"
               />
               <label class="date-label">Desde</label>
-            </div>
           </div>
           
           <div class="date-container">
-            <div class="date-wrapper">
-              <i class="fas fa-calendar-alt date-icon"></i>
               <input
                 type="date"
                 v-model="toDate"
+                :min="fromDate || undefined"
                 placeholder="Fecha fin"
                 class="date-input"
               />
               <label class="date-label">Hasta</label>
-            </div>
           </div>
-        </div>
-        
-        <div class="export-controls" v-if="reportData.length > 0">
-          <div class="export-label">Exportar como:</div>
+        <div class="export-controls">
           <div class="export-buttons">
-            <button class="export-btn csv" @click="exportCSV" title="Exportar a CSV">
+            <button class="export-btn csv" type="button" @click="exportCSV" title="Exportar a CSV" :disabled="loading || !reportData.length">
               <i class="fas fa-file-csv"></i>
               <span>CSV</span>
             </button>
-            <button class="export-btn excel" @click="exportExcel" title="Exportar a Excel">
+            <button class="export-btn excel" type="button" @click="exportExcel" title="Exportar a Excel" :disabled="loading || !reportData.length">
               <i class="fas fa-file-excel"></i>
               <span>Excel</span>
             </button>
-            <button class="export-btn pdf" @click="exportPDF" title="Exportar a PDF">
+            <button class="export-btn pdf" type="button" @click="exportPDF" title="Exportar a PDF" :disabled="loading || !reportData.length">
               <i class="fas fa-file-pdf"></i>
               <span>PDF</span>
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Loader animado -->
-    <div v-if="loading" class="loader"></div>
+    <div v-if="loading" class="report-loading" role="status" aria-live="polite">
+      <div class="loader"></div>
+      <span>Generando el reporte…</span>
+    </div>
 
     <!-- Mensaje si no hay reportes -->
-    <div v-else-if="reportData.length === 0 && !loading" class="no-reports-msg">
-      <i class="fas fa-chart-line"></i>
-      <p>No hay datos para mostrar en el período seleccionado.</p>
-      <small>Selecciona un rango de fechas y genera un reporte</small>
+    <div v-else-if="reportData.length === 0 && !loading" class="no-reports-msg report-empty-state">
+      <div class="empty-state-icon"><i class="fas fa-chart-column"></i></div>
+      <h2>{{ reportError ? 'No pudimos cargar el reporte' : 'No hay movimientos en este período' }}</h2>
+      <p>{{ reportError || 'Prueba con otro rango de fechas para consultar ventas registradas.' }}</p>
+      <button class="btn-primary" type="button" @click="fetchReport">
+        <i class="fas fa-rotate"></i>Volver a consultar
+      </button>
     </div>
 
     <!-- Tabla de reportes moderna -->
-    <div v-else class="reports-table-container">
-      <div class="table-header">
-        <h3>Datos del Reporte</h3>
+    <div v-else class="reports-table-container demo-panel table-panel">
+      <div class="table-header table-toolbar">
+        <h3><i class="fas fa-list-check" aria-hidden="true"></i>Detalle de ventas</h3>
         <div class="table-summary">
-          <span>{{ reportData.length }} registro(s) encontrado(s)</span>
+          <span>{{ reportData.length }} {{ reportData.length === 1 ? 'registro' : 'registros' }}</span>
+          <span class="summary-divider">·</span>
+          <span>{{ periodLabel }}</span>
         </div>
       </div>
       
@@ -115,7 +93,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in reportData" :key="item.id" class="table-row">
+            <tr v-for="(item, index) in reportData" :key="`${item.id}-${index}`" class="table-row">
               <td>
                 <div class="date-cell">
                   <i class="fas fa-calendar"></i>
@@ -124,7 +102,7 @@
               </td>
               <td>
                 <div class="product-cell">
-                  <span class="product-name">{{ item.product }}</span>
+                  <span class="product-name">{{ item.product || 'Producto no disponible' }}</span>
                 </div>
               </td>
               <td>
@@ -140,7 +118,7 @@
               <td>
                 <div class="user-cell">
                   <i class="fas fa-user"></i>
-                  {{ item.usuario }}
+                  {{ item.usuario || '—' }}
                 </div>
               </td>
             </tr>
@@ -151,7 +129,7 @@
       <div class="table-footer" v-if="reportData.length > 0">
         <div class="summary-stats">
           <div class="summary-item">
-            <span class="summary-label">Total General:</span>
+            <span class="summary-label">Total vendido:</span>
             <span class="summary-value">S/ {{ formatCurrency(totalAmount) }}</span>
           </div>
           <div class="summary-item">
@@ -188,49 +166,60 @@ export default {
       reportData: [],
       // Estado de carga
       loading: false,
+      reportError: '',
       // Notificaciones
       notification: {
         show: false,
         message: '',
         type: 'success',
         icon: 'fas fa-check-circle'
-      }
+      },
+      notificationTimer: null
     }
   },
   computed: {
     // Calcula el total de todas las ventas
     totalAmount() {
-      return this.reportData.reduce((sum, item) => sum + parseFloat(item.total || 0), 0).toFixed(2);
+      return this.reportData.reduce((sum, item) => sum + (Number.parseFloat(item.total) || 0), 0).toFixed(2);
+    },
+    uniqueSales() {
+      return new Set(this.reportData.map(item => item.id).filter(id => id !== null && id !== undefined)).size;
     },
     // Calcula el número de productos únicos
     uniqueProducts() {
-      const products = new Set(this.reportData.map(item => item.product));
+      const products = new Set(this.reportData.map(item => String(item.product || '').trim().toLowerCase()).filter(Boolean));
       return products.size;
     },
     // Calcula el promedio por venta
     averageSale() {
-      return this.reportData.length > 0 
-        ? (this.totalAmount / this.reportData.length).toFixed(2) 
+      return this.uniqueSales > 0
+        ? (Number(this.totalAmount) / this.uniqueSales).toFixed(2)
         : '0.00';
+    },
+    periodLabel() {
+      if (!this.fromDate && !this.toDate) return 'Todas las fechas';
+      if (this.fromDate && this.toDate) return `${this.formatDate(this.fromDate)} – ${this.formatDate(this.toDate)}`;
+      return this.fromDate ? `Desde ${this.formatDate(this.fromDate)}` : `Hasta ${this.formatDate(this.toDate)}`;
     }
   },
   methods: {
     // Obtiene los datos del reporte desde la API
-    async fetchReport() {
-      if (!this.fromDate && !this.toDate) {
-        this.showNotification('Por favor selecciona al menos una fecha', 'error', 'fas fa-exclamation-triangle');
+    async fetchReport({ notify = true } = {}) {
+      if (this.fromDate && this.toDate && this.fromDate > this.toDate) {
+        if (notify) this.showNotification('La fecha inicial debe ser anterior o igual a la fecha final', 'error', 'fas fa-exclamation-triangle');
         return;
       }
 
       this.loading = true;
+      this.reportError = '';
       this.reportData = [];
 
       try {
-        let url = `${import.meta.env.VITE_API_URL}/api/reports/by-date`;
-        const params = [];
-        if (this.fromDate) params.push(`from=${this.fromDate}`);
-        if (this.toDate) params.push(`to=${this.toDate}`);
-        if (params.length) url += `?${params.join('&')}`;
+        const params = new URLSearchParams();
+        if (this.fromDate) params.set('from', this.fromDate);
+        if (this.toDate) params.set('to', this.toDate);
+        const apiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+        const url = `${apiUrl}/api/reports/by-date?${params.toString()}`;
         
         const response = await fetch(url, {
           headers: {
@@ -243,9 +232,8 @@ export default {
         }
         
         const data = await response.json();
-        console.log('Respuesta del backend:', data);
         
-        this.reportData = data.map(item => ({
+        this.reportData = (Array.isArray(data) ? data : []).map(item => ({
           id: item.id,
           date: item.fecha,
           product: item.product,
@@ -254,14 +242,15 @@ export default {
           usuario: item.usuario
         }));
 
-        if (this.reportData.length > 0) {
+        if (this.reportData.length > 0 && notify) {
           this.showNotification(`Reporte generado con ${this.reportData.length} registros`, 'success');
-        } else {
+        } else if (notify) {
           this.showNotification('No se encontraron datos para el período seleccionado', 'warning', 'fas fa-info-circle');
         }
 
       } catch (error) {
         console.error('Error al obtener reporte:', error);
+        this.reportError = 'No fue posible conectar con el servidor. Intenta generar el reporte nuevamente.';
         this.showNotification('Error al generar el reporte', 'error', 'fas fa-exclamation-triangle');
         this.reportData = [];
       } finally {
@@ -272,21 +261,25 @@ export default {
     // Exporta el reporte a CSV
     exportCSV() {
       try {
+        if (!this.reportData.length) return;
         const headers = ['Fecha', 'Producto', 'Cantidad', 'Total', 'Usuario'];
         const rows = this.reportData.map(item => [
-          item.date, item.product, item.quantity, item.total, item.usuario
+          this.formatDate(item.date), item.product, item.quantity, this.formatCurrency(item.total), item.usuario
         ]);
         
-        let csvContent = headers.join(',') + '\n' +
-          rows.map(e => e.join(',')).join('\n');
+        const csvCell = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+        const csvContent = '\ufeff' + headers.map(csvCell).join(';') + '\n' +
+          rows.map(row => row.map(csvCell).join(';')).join('\n');
         
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
+        link.href = url;
         link.setAttribute('download', `reporte_${this.getDateString()}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
         
         this.showNotification('Reporte CSV descargado exitosamente', 'success');
       } catch (error) {
@@ -297,6 +290,7 @@ export default {
     // Exporta el reporte a Excel
     async exportExcel() {
       try {
+        if (!this.reportData.length) return;
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet("Reporte de Ventas");
 
@@ -323,7 +317,7 @@ export default {
         // Agregar los datos
         this.reportData.forEach(item => {
           worksheet.addRow({
-            date: item.date,
+            date: this.formatDate(item.date),
             product: item.product,
             quantity: item.quantity,
             total: parseFloat(item.total),
@@ -352,7 +346,7 @@ export default {
         a.href = url;
         a.download = `reporte_${this.getDateString()}.xlsx`;
         a.click();
-        window.URL.revokeObjectURL(url);
+        setTimeout(() => window.URL.revokeObjectURL(url), 1000);
         
         this.showNotification('Reporte Excel descargado exitosamente', 'success');
       } catch (error) {
@@ -363,6 +357,7 @@ export default {
     // Exporta el reporte a PDF
     exportPDF() {
       try {
+        if (!this.reportData.length) return;
         const doc = new jsPDF();
         
         // Título del documento
@@ -382,10 +377,10 @@ export default {
 
         // Tabla de datos
         const tableData = this.reportData.map(item => [
-          item.date,
+          this.formatDate(item.date),
           item.product,
-          item.quantity.toString(),
-          `S/ ${item.total}`,
+          String(item.quantity ?? 0),
+          `S/ ${this.formatCurrency(item.total)}`,
           item.usuario
         ]);
 
@@ -422,7 +417,11 @@ export default {
 
     // Formatea fechas para mostrar
     formatDate(dateString) {
+      if (!dateString) return '—';
+      const isoDate = String(dateString || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`;
       const date = new Date(dateString);
+      if (Number.isNaN(date.getTime())) return '—';
       return date.toLocaleDateString('es-ES', {
         day: '2-digit',
         month: '2-digit',
@@ -432,7 +431,8 @@ export default {
 
     // Formatea moneda
     formatCurrency(amount) {
-      return parseFloat(amount || 0).toFixed(2);
+      const numericAmount = Number(amount);
+      return (Number.isFinite(numericAmount) ? numericAmount : 0).toFixed(2);
     },
 
     // Genera string de fecha para nombres de archivo
@@ -443,6 +443,7 @@ export default {
 
     // Muestra notificaciones
     showNotification(message, type = 'success', icon = 'fas fa-check-circle') {
+      clearTimeout(this.notificationTimer);
       this.notification = {
         show: true,
         message,
@@ -450,21 +451,26 @@ export default {
         icon
       };
       
-      setTimeout(() => {
+      this.notificationTimer = setTimeout(() => {
         this.notification.show = false;
       }, 4000);
     }
   },
+  beforeUnmount() {
+    clearTimeout(this.notificationTimer);
+  },
   
-  mounted() {
-    // Establecer fecha de hoy como valor por defecto
-    const today = new Date().toISOString().split('T')[0];
-    this.toDate = today;
+  async mounted() {
+    this.$emit('set-title', 'Reportes');
+    const toDateString = date => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+    const today = new Date();
+    this.toDate = toDateString(today);
     
     // Fecha de inicio: hace una semana
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
-    this.fromDate = weekAgo.toISOString().split('T')[0];
+    this.fromDate = toDateString(weekAgo);
+    await this.fetchReport({ notify: false });
   }
 }
 </script>
@@ -814,21 +820,10 @@ export default {
 .table-wrapper {
   overflow-x: auto;
   overflow-y: auto;
-  max-height: calc(100vh - 400px);
+  max-height: min(62vh, 560px);
+  min-height: 180px;
   -webkit-overflow-scrolling: touch;
-  /* Optimización para muchos datos */
-  contain: layout style paint;
-  will-change: scroll-position;
-  /* Scroll momentum para iOS */
-  -webkit-overflow-scrolling: touch;
-  /* Aceleración por hardware */
-  transform: translateZ(0);
-  /* Contenido optimizado */
-  contain: strict;
-  /* Scroll suave en todos los navegadores */
-  scroll-behavior: smooth;
-  /* Mejor performance con muchos elementos */
-  will-change: scroll-position;
+  overscroll-behavior: contain;
 }
 
 .reports-table {
@@ -837,8 +832,6 @@ export default {
   border-spacing: 0;
   background: transparent;
   min-width: 700px;
-  /* Optimización de rendering */
-  contain: layout style;
 }
 
 .reports-table thead {
@@ -860,24 +853,16 @@ export default {
 }
 
 .reports-table tbody {
-  /* Contenido optimizado para virtual scrolling */
-  contain: layout style paint;
+  background: transparent;
 }
 
 .reports-table tbody tr {
-  /* Optimización para filas individuales */
-  contain: layout style paint;
-  /* Prepara para animaciones */
-  will-change: transform, opacity;
-  transition: all 0.2s ease;
+  transition: background-color 0.16s ease;
   border-bottom: 1px solid #f1f5f9;
-  /* Optimización para scrolling con muchos datos */
-  contain: layout style paint;
 }
 
 .reports-table tbody tr:hover {
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  transform: translateX(2px);
 }
 
 .reports-table tbody tr:last-child {

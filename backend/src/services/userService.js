@@ -24,11 +24,23 @@ const updateUserProfile = async (id, name, email, imagePath) => {
 };
 
 const updateUserRole = async (id, role) => {
-  await pool.query('UPDATE users SET rol = ? WHERE id = ?', [role, id]);
+  const [result] = await pool.query('UPDATE users SET rol = ? WHERE id = ?', [role, id]);
+  return result.affectedRows > 0;
 };
 
 const deactivateUser = async (id) => {
-  await pool.query('UPDATE users SET activo = 0, is_online = 0 WHERE id = ?', [id]);
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query('UPDATE users SET activo = 0, is_online = 0 WHERE id = ?', [id]);
+    await connection.query('UPDATE sessions SET activo = 0 WHERE user_id = ?', [id]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 };
 
 const updateActivity = async (userId) => {

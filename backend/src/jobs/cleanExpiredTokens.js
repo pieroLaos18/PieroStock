@@ -4,10 +4,17 @@ const pool = require('../config/db');
 
 const limpiarTokensExpirados = async () => {
   try {
-    const [result] = await pool.query(
+    const [pendingUsers] = await pool.query(
       'DELETE FROM pending_users WHERE token_expires_at < NOW()'
     );
-    console.log(`🧹 Tokens expirados eliminados: ${result.affectedRows}`);
+    const [sessions] = await pool.query(
+      'DELETE FROM sessions WHERE expiracion < NOW() OR activo = 0'
+    );
+    if (pendingUsers.affectedRows || sessions.affectedRows) {
+      console.log(
+        `🧹 Limpieza: ${pendingUsers.affectedRows} registros pendientes y ${sessions.affectedRows} sesiones expiradas eliminadas.`,
+      );
+    }
   } catch (err) {
     console.error('❌ Error al limpiar tokens expirados:', err);
   }

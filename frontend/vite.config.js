@@ -1,13 +1,16 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import path from 'path';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [vue()],
   server: {
     port: 5174,
     fs: {
-      allow: ['..'],
+      allow: [__dirname],
     },
     proxy: {
       '/api': {

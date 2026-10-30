@@ -11,7 +11,6 @@ export function useRealTimeData(options = {}) {
   const config = {
     autoStart: true,
     enableNotifications: true,
-    updateInterval: 30000,
     debounceTime: 1000,
     ...options
   };
@@ -35,8 +34,7 @@ export function useRealTimeData(options = {}) {
     
     const now = Date.now();
     const timeSinceUpdate = lastUpdate.value ? now - lastUpdate.value : Infinity;
-    
-    if (timeSinceUpdate > config.updateInterval * 2) return 'stale';
+    if (timeSinceUpdate > 120000) return 'stale';
     return 'live';
   });
 
@@ -117,7 +115,7 @@ export function useRealTimeData(options = {}) {
       
       // Suscribirse a eventos básicos
       subscribe('connection', handleConnectionChange);
-      subscribe('dashboard_update', (newData) => updateData(newData, 'websocket'));
+      subscribe('data_changed', (change) => updateData(change, 'websocket'));
       subscribe('error', handleError);
       
       console.log('✅ useRealTimeData inicializado');
@@ -211,8 +209,11 @@ export function useDashboardRealTime(options = {}) {
   };
 
   // Suscribirse a actualizaciones de gráficos
-  realTimeData.subscribe('dashboard_update', (newData) => {
-    updateCharts(newData);
+  realTimeData.subscribe('data_changed', (change) => {
+    if (change.entities?.some(entity => ['sales', 'inventory', 'products'].includes(entity))) {
+      forceChartUpdate('pie');
+      forceChartUpdate('bar');
+    }
   });
 
   return {

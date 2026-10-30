@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { registrarActividad } = require('./activityService');
 
 const getSalesByDate = async (from, to) => {
   let query = `
@@ -8,32 +9,31 @@ const getSalesByDate = async (from, to) => {
     FROM ventas v
     JOIN detalle_ventas dv ON v.id = dv.venta_id
     JOIN products p ON dv.producto_id = p.id
-    JOIN users u ON v.user_id = u.id
+    LEFT JOIN users u ON v.user_id = u.id
   `;
   const params = [];
 
+  query += ' WHERE v.anulada = 0';
   if (from && to) {
-    query += ' WHERE v.fecha BETWEEN ? AND ?';
+    query += ' AND v.fecha >= ? AND v.fecha < DATE_ADD(?, INTERVAL 1 DAY)';
     params.push(from, to);
   } else if (from) {
-    query += ' WHERE v.fecha >= ?';
+    query += ' AND v.fecha >= ?';
     params.push(from);
   } else if (to) {
-    query += ' WHERE v.fecha <= ?';
+    query += ' AND v.fecha < DATE_ADD(?, INTERVAL 1 DAY)';
     params.push(to);
   }
 
-  query += ' ORDER BY v.fecha ASC';
+  query += ' ORDER BY v.fecha ASC LIMIT ?';
+  params.push(10000);
 
   const [result] = await pool.query(query, params);
   return result;
 };
 
-const logReportActivity = async (descripcion, usuario) => {
-  await pool.query(
-    'INSERT INTO activities (descripcion, usuario) VALUES (?, ?)',
-    [descripcion, usuario]
-  );
+const logReportActivity = async (descripcion, userId, detalles) => {
+  await registrarActividad({ userId, tipo: 'reporte', descripcion, detalles });
 };
 
 module.exports = {

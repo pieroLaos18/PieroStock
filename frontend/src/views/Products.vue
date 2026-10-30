@@ -1,73 +1,31 @@
 <template>
   <div class="dynamic-content products-page">
-    <!-- Cabecera mejorada para Products.vue -->
-    <div class="products-header">
-      <div class="header-content">
-        <div class="header-left">
-          <div class="header-icon">
-            <i class="fas fa-boxes"></i>
-          </div>
-          <div class="header-text">
-            <h1>Gestión de Productos</h1>
-            <p class="header-subtitle">Control completo de tu inventario y catálogo de productos</p>
-            <div class="header-stats">
-              <div class="stat-item">
-                <span class="stat-number">{{ products.length }}</span>
-                <span class="stat-label">Total</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ products.filter(p => p.low_stock).length }}</span>
-                <span class="stat-label">Stock Bajo</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ categories.length }}</span>
-                <span class="stat-label">Categorías</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="header-actions">
-          <button class="btn-new-product" @click="openProductModal()">
-            <i class="fas fa-plus"></i>
-            <span>Nuevo Producto</span>
-          </button>
-        </div>
-      </div>
-      
-      <div class="filters-section">
-        <div class="search-container">
-          <div class="search-wrapper">
-            <i class="fas fa-search search-icon"></i>
-            <input
-              type="text"
-              v-model="searchQuery"
-              placeholder="Buscar productos por nombre..."
-              class="search-input"
-            />
-            <button v-if="searchQuery" @click="searchQuery = ''" class="clear-search">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-        </div>
-        
-        <div class="filter-container">
-          <div class="filter-wrapper">
-            <i class="fas fa-filter filter-icon"></i>
-            <select v-model="selectedCategory" class="category-select">
-              <option value="">Todas las categorías</option>
-              <option v-for="category in categories" :key="category" :value="category">
-                {{ category }}
-              </option>
-            </select>
-          </div>
-        </div>
-        
+    <div class="page-heading">
+      <div><p class="eyebrow">INVENTARIO</p><h1>Productos</h1><p>Administra tu catálogo, existencias y entradas por lote.</p></div>
+      <button v-if="canManageCatalog" class="primary-button" type="button" @click="openProductModal()"><i class="fas fa-plus"></i> Nuevo producto</button>
+    </div>
+
+    <section class="metric-grid compact-metrics">
+      <article class="metric-card"><div class="metric-top"><span>Productos</span><span class="metric-icon teal"><i class="fas fa-box"></i></span></div><strong>{{ products.length }}</strong><small class="metric-foot">En el catálogo</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Valor del inventario</span><span class="metric-icon blue"><i class="fas fa-coins"></i></span></div><strong>S/ {{ products.reduce((sum, p) => sum + Number(p.stock || 0) * Number(p.price || 0), 0).toFixed(2) }}</strong><small class="metric-foot">A precio de venta</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Stock bajo</span><span class="metric-icon amber"><i class="fas fa-triangle-exclamation"></i></span></div><strong>{{ products.filter(p => p.low_stock).length }}</strong><small class="metric-foot">Debajo del mínimo</small></article>
+    </section>
+
+    <section class="demo-panel filters-panel">
+      <div class="table-toolbar product-toolbar">
+        <div class="search-box"><i class="fas fa-search" aria-hidden="true"></i><input type="search" v-model="searchQuery" aria-label="Buscar productos" placeholder="Buscar por nombre, categoría o marca" /><button v-if="searchQuery" type="button" @click="searchQuery = ''" aria-label="Limpiar búsqueda"><i class="fas fa-times"></i></button></div>
+        <select v-model="selectedCategory" class="category-select">
+          <option value="">Todas las categorías</option>
+          <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
+        </select>
         <div class="view-controls">
           <button
             class="view-toggle"
             :class="{ active: viewMode === 'cards' }"
+            type="button"
             @click="viewMode = 'cards'"
+            :aria-pressed="viewMode === 'cards'"
+            aria-label="Vista de tarjetas"
             title="Vista de tarjetas"
           >
             <i class="fas fa-th-large"></i>
@@ -75,26 +33,44 @@
           <button
             class="view-toggle"
             :class="{ active: viewMode === 'list' }"
+            type="button"
             @click="viewMode = 'list'"
+            :aria-pressed="viewMode === 'list'"
+            aria-label="Vista de tabla"
             title="Vista de tabla"
           >
             <i class="fas fa-list"></i>
           </button>
         </div>
       </div>
+    </section>
+
+    <div v-if="productsError" class="products-action-error" role="alert">
+      <span>{{ productsError }}</span>
+      <button type="button" class="text-button" @click="fetchProducts"><i class="fas fa-rotate"></i> Reintentar</button>
     </div>
 
     <!-- Loader animado -->
-    <div v-if="loading" class="loader"></div>
+    <div v-if="loading" class="loader" role="status" aria-label="Cargando productos"></div>
 
     <!-- Mensaje si no hay productos -->
     <div v-else-if="filteredProducts.length === 0" class="no-products-msg">
-      <i class="fas fa-box-open"></i>
-      <p>No hay productos para mostrar.</p>
+      <i class="fas" :class="products.length ? 'fa-filter-circle-xmark' : 'fa-box-open'"></i>
+      <p>{{ products.length ? 'No hay productos que coincidan con esos filtros.' : 'No hay productos para mostrar.' }}</p>
+      <button v-if="products.length" type="button" class="secondary-button" @click="resetProductFilters">Limpiar filtros</button>
     </div>
 
+    <section v-else class="products-results table-panel" aria-label="Resultados de productos">
+      <div class="results-toolbar table-toolbar">
+        <div class="table-title-group">
+          <span class="results-eyebrow">Inventario</span>
+          <h2>Catálogo de productos</h2>
+        </div>
+        <span class="results-count">{{ filteredProducts.length }} {{ filteredProducts.length === 1 ? 'producto' : 'productos' }}</span>
+      </div>
+
     <!-- Vista de productos en tarjetas mejorada -->
-    <div v-else-if="viewMode === 'cards'" class="products-grid">
+    <div v-if="viewMode === 'cards'" class="products-grid">
       <div
         v-for="product in filteredProducts"
         :key="product.id"
@@ -105,14 +81,18 @@
           <div class="product-image-container">
             <img
               :src="product.image || defaultProductImg"
-              alt="Imagen del producto"
+              :alt="`Imagen de ${product.name}`"
               class="product-image"
+              @error="handleProductImageError"
             />
             <div class="product-overlay">
-              <button @click="editProduct(product)" class="overlay-btn edit" title="Editar producto">
+              <button v-if="canManageCatalog" type="button" @click="editProduct(product)" class="overlay-btn edit" :aria-label="`Editar ${product.name}`" title="Editar producto">
                 <i class="fas fa-edit"></i>
               </button>
-              <button @click="deleteProduct(product.id)" class="overlay-btn delete" title="Eliminar producto">
+              <button type="button" @click="openReceiptModal(product)" class="overlay-btn receive" :aria-label="`Registrar entrada para ${product.name}`" title="Registrar una entrega y revisar lotes FIFO">
+                <i class="fas fa-truck-ramp-box"></i>
+              </button>
+              <button v-if="canManageCatalog" type="button" @click="deleteProduct(product.id)" class="overlay-btn delete" :aria-label="`Desactivar ${product.name}`" title="Desactivar producto">
                 <i class="fas fa-trash"></i>
               </button>
             </div>
@@ -148,13 +128,13 @@
           </div>
           
           <div class="product-pricing">
-            <div class="price-row">
+            <div v-if="canViewCost" class="price-row">
               <span class="price-label">Venta:</span>
-              <span class="price-value sale">S/{{ product.price }}</span>
+              <span class="price-value sale">S/ {{ Number(product.price || 0).toFixed(2) }}</span>
             </div>
             <div class="price-row">
               <span class="price-label">Compra:</span>
-              <span class="price-value purchase">S/{{ product.purchase_price || 0 }}</span>
+              <span class="price-value purchase">S/ {{ Number(product.purchase_price || 0).toFixed(2) }}</span>
             </div>
           </div>
           
@@ -167,27 +147,28 @@
             </div>
             <div class="stock-limits">
               <span class="stock-min">Mín: {{ product.stock_min || 0 }}</span>
-              <span class="stock-max">Máx: {{ product.stock_max || '∞' }}</span>
+              <span class="stock-max">Máx: {{ Number(product.stock_max) > 0 ? product.stock_max : '∞' }}</span>
             </div>
+              <button class="receive-stock-btn" type="button" @click="openReceiptModal(product)">
+              <i class="fas fa-box-open"></i> Registrar entrega / lotes
+            </button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Vista de productos en tabla -->
-    <div v-else class="products-table">
+    <div v-else class="products-table table-scroll">
       <table>
         <thead>
           <tr>
-            <th>Imagen</th>
-            <th>Nombre</th>
-            <th>Descripción</th>
-            <th>Precio</th>
+            <th>Producto</th>
             <th>Categoría</th>
-            <th>Stock</th>
-            <th>Stock Mín</th>
-            <th>Stock Máx</th>
-            <th>Acciones</th>
+            <th>Precio</th>
+            <th>Stock disponible</th>
+            <th>Estado</th>
+            <th>Entradas</th>
+            <th v-if="canManageCatalog">Acciones</th>
           </tr>
         </thead>
         <tbody>
@@ -196,24 +177,17 @@
             :key="product.id"
             :class="{ 'low-stock': product.low_stock }"
           >
-            <td>
-              <img :src="product.image || defaultProductImg" alt="Imagen" class="table-product-image" />
-            </td>
-            <td>{{ product.name }}</td>
-            <td>{{ product.description }}</td>
-            <td>S/{{ product.price }}</td>
+            <td><div class="table-product"><img :src="product.image || defaultProductImg" :alt="product.name" class="table-product-image" @error="handleProductImageError" /><span><b>{{ product.name }}</b><small>{{ product.description || `Código #${product.id}` }}</small></span></div></td>
             <td>{{ product.category }}</td>
-            <td>
-              {{ product.stock }}
-              <span v-if="product.low_stock" class="stock-alert" title="Stock bajo">⚠️ Bajo stock</span>
-            </td>
-            <td>{{ product.stock_min }}</td>
-            <td>{{ product.stock_max }}</td>
-            <td>
-              <button @click="editProduct(product)" class="edit-btn" title="Editar">
+            <td>S/ {{ Number(product.price || 0).toFixed(2) }}</td>
+            <td><strong>{{ product.stock }}</strong><small class="stock-subtext">Mín. {{ product.stock_min || 0 }} · Máx. {{ Number(product.stock_max) > 0 ? product.stock_max : '∞' }}</small></td>
+            <td><span class="status-pill" :class="product.low_stock ? 'warning' : 'healthy'"><i></i>{{ product.low_stock ? 'Stock bajo' : 'Disponible' }}</span></td>
+            <td><button type="button" @click="openReceiptModal(product)" class="small-action"><i class="fas fa-truck-ramp-box"></i> Registrar entrada</button></td>
+            <td v-if="canManageCatalog" class="product-actions-cell">
+              <button type="button" @click="editProduct(product)" class="edit-btn" :aria-label="`Editar ${product.name}`" title="Editar">
                 <i class="fas fa-pen"></i>
               </button>
-              <button @click="deleteProduct(product.id)" class="delete-btn" title="Eliminar">
+              <button type="button" @click="deleteProduct(product.id)" class="delete-btn" :aria-label="`Desactivar ${product.name}`" title="Desactivar">
                 <i class="fas fa-trash"></i>
               </button>
             </td>
@@ -221,6 +195,7 @@
         </tbody>
       </table>
     </div>
+    </section>
 
     <!-- Modal mejorado para agregar/editar producto -->
     <transition name="modal" appear>
@@ -262,6 +237,7 @@
                           placeholder="Ej: iPhone 14 Pro Max"
                           class="form-input"
                           required
+                          maxlength="150"
                         />
                       </div>
                     </div>
@@ -275,6 +251,7 @@
                           placeholder="Descripción detallada del producto..."
                           class="form-textarea"
                           rows="3"
+                          required
                         ></textarea>
                       </div>
                     </div>
@@ -288,6 +265,8 @@
                           type="text"
                           placeholder="Ej: Electrónicos, Ropa, Hogar..."
                           class="form-input"
+                          required
+                          maxlength="100"
                         />
                       </div>
                     </div>
@@ -313,6 +292,7 @@
                             placeholder="0.00"
                             class="form-input"
                             required
+                            inputmode="decimal"
                           />
                           <span class="input-suffix">S/</span>
                         </div>
@@ -330,6 +310,7 @@
                             placeholder="0.00"
                             class="form-input"
                             required
+                            inputmode="decimal"
                           />
                           <span class="input-suffix">S/</span>
                         </div>
@@ -346,6 +327,8 @@
                             type="text"
                             placeholder="Ej: Apple, Samsung, Nike..."
                             class="form-input"
+                            required
+                            maxlength="100"
                           />
                         </div>
                       </div>
@@ -354,7 +337,7 @@
                         <label>Unidad de medida</label>
                         <div class="input-wrapper">
                           <i class="fas fa-balance-scale input-icon"></i>
-                          <select v-model="form.unidad_medida" class="form-select">
+                          <select v-model="form.unidad_medida" class="form-select" required>
                             <option value="">Seleccionar unidad</option>
                             <option value="unidad">Unidad (und)</option>
                             <option value="kg">Kilogramo (kg)</option>
@@ -395,19 +378,22 @@
                   </div>
                   <div class="section-content">
                     <div class="form-group">
-                      <label>Stock actual</label>
+                      <label>{{ editingProduct ? 'Stock disponible' : 'Stock inicial' }}</label>
                       <div class="input-wrapper">
                         <i class="fas fa-boxes input-icon"></i>
                         <input 
-                          v-model.number="form.stock" 
+                          v-model.number="form.stock"
                           type="number" 
                           min="0" 
-                          placeholder="Cantidad actual en inventario"
+                          step="1"
+                          placeholder="Cantidad inicial"
                           class="form-input"
                           required
+                          :readonly="Boolean(editingProduct)"
                         />
                         <span class="input-suffix">{{ form.unidad_medida || 'und' }}</span>
                       </div>
+                      <small v-if="editingProduct" class="field-help">Para aumentar el stock, registra una entrega nueva. Así cada lote conserva su código y orden FIFO.</small>
                     </div>
                     
                     <div class="form-row">
@@ -419,6 +405,7 @@
                             v-model.number="form.stockMin" 
                             type="number" 
                             min="0" 
+                            step="1"
                             placeholder="Alerta de stock bajo"
                             class="form-input"
                           />
@@ -433,23 +420,15 @@
                             v-model.number="form.stockMax" 
                             type="number" 
                             min="0" 
+                            step="1"
                             placeholder="Capacidad máxima"
                             class="form-input"
                           />
                         </div>
+                        <small class="field-help">Usa 0 si no quieres establecer un límite máximo.</small>
                       </div>
                     </div>
                     
-                    <div class="form-group">
-                      <label>Estado del producto</label>
-                      <div class="input-wrapper">
-                        <i class="fas fa-toggle-on input-icon"></i>
-                        <select v-model="form.activo" class="form-select">
-                          <option :value="1">✅ Activo - Disponible para venta</option>
-                          <option :value="0">❌ Suspendido - No disponible</option>
-                        </select>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -464,15 +443,16 @@
                         <input 
                           type="file" 
                           @change="onImageChange" 
-                          accept="image/*" 
+                          accept=".jpg,.jpeg,.png,.gif,image/jpeg,image/png,image/gif"
                           class="file-input"
                           id="imageUpload"
+                          :disabled="isImageProcessing"
                         />
                         <label for="imageUpload" class="upload-label">
                           <div v-if="!form.imagePreview && !(editingProduct && editingProduct.image)" class="upload-placeholder">
                             <i class="fas fa-cloud-upload-alt"></i>
                             <span>Hacer clic para subir imagen</span>
-                            <small>JPG, PNG o GIF (máx. 2MB)</small>
+                            <small>JPG, PNG o GIF (máx. 2 MB)</small>
                           </div>
                           <div v-else class="image-preview-wrapper">
                             <img
@@ -500,17 +480,83 @@
               </div>
               
               <!-- Botones de acción -->
+              <p v-if="imageError" class="products-action-error" role="alert">{{ imageError }}</p>
+              <p v-if="formError" class="products-action-error" role="alert">{{ formError }}</p>
               <div class="modal-footer">
                 <button type="button" @click="closeProductModal" class="btn-secondary">
                   <i class="fas fa-times"></i>
                   Cancelar
                 </button>
-                <button type="submit" class="btn-primary">
+                <button type="submit" class="btn-primary" :disabled="savingProduct || isImageProcessing">
                   <i class="fas fa-save"></i>
-                  {{ editingProduct ? 'Actualizar' : 'Crear' }} Producto
+                  {{ isImageProcessing ? 'Procesando imagen…' : savingProduct ? 'Guardando…' : `${editingProduct ? 'Actualizar' : 'Crear'} producto` }}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <transition name="modal" appear>
+      <div v-if="receivingProduct" class="modal-overlay receipt-overlay" @click.self="closeReceiptModal">
+        <div class="modal-container receipt-modal">
+          <div class="modal-header">
+            <div class="modal-title-section">
+              <div class="modal-icon"><i class="fas fa-boxes-stacked"></i></div>
+              <div>
+                <h2>Entregas y lotes</h2>
+                <p class="modal-subtitle">{{ receivingProduct.name }} · {{ receivingProduct.stock }} unidades disponibles</p>
+              </div>
+            </div>
+            <button type="button" class="modal-close-btn" aria-label="Cerrar" :disabled="savingReceipt" @click="closeReceiptModal"><i class="fas fa-times"></i></button>
+          </div>
+
+          <div class="modal-body receipt-body">
+            <div class="receipt-layout">
+              <section class="batch-history">
+                <div class="receipt-section-heading">
+                  <div><span class="results-eyebrow">Trazabilidad</span><h3>Lotes en orden FIFO</h3></div>
+                  <span class="results-count">{{ productBatches.filter(batch => Number(batch.cantidad_disponible) > 0).length }} activos</span>
+                </div>
+                <p class="receipt-hint">Las ventas consumen primero las unidades del lote más antiguo.</p>
+                <div v-if="loadingBatches" class="loader"></div>
+                <div v-else-if="productBatches.length === 0" class="batch-empty">Todavía no hay entregas registradas.</div>
+                <div v-else class="batch-list">
+                  <article v-for="(batch, index) in productBatches" :key="batch.id" class="batch-row" :class="{ depleted: Number(batch.cantidad_disponible) === 0 }">
+                    <span class="batch-order">{{ index + 1 }}</span>
+                    <div class="batch-main">
+                      <strong>{{ batch.codigo_lote }}</strong>
+                      <small>Ingreso: {{ formatBatchDate(batch.fecha_ingreso) }}<template v-if="batch.proveedor"> · {{ batch.proveedor }}</template></small>
+                      <small v-if="batch.fecha_vencimiento">Vence: {{ formatBatchDate(batch.fecha_vencimiento) }}</small>
+                    </div>
+                    <span class="batch-quantity">{{ batch.cantidad_disponible }} / {{ batch.cantidad_inicial }}</span>
+                  </article>
+                </div>
+              </section>
+
+              <form class="receipt-form" @submit.prevent="submitStockReceipt">
+                <div class="receipt-section-heading">
+                  <div><span class="results-eyebrow">Nueva entrada</span><h3>Registrar entrega</h3></div>
+                </div>
+                <label for="receipt-quantity">Cantidad recibida</label>
+                <input id="receipt-quantity" v-model.number="receiptForm.cantidad" type="number" min="1" step="1" required />
+                <label for="receipt-code">Código de lote</label>
+                <input id="receipt-code" v-model.trim="receiptForm.codigo_lote" type="text" maxlength="100" placeholder="Se genera automáticamente si lo dejas vacío" />
+                <label for="receipt-supplier">Proveedor <span>(opcional)</span></label>
+                <input id="receipt-supplier" v-model.trim="receiptForm.proveedor" type="text" maxlength="150" placeholder="Nombre del proveedor" />
+                <label for="receipt-expiry">Fecha de vencimiento <span>(opcional)</span></label>
+                <input id="receipt-expiry" v-model="receiptForm.fecha_vencimiento" type="date" />
+                <p v-if="receiptError" class="receipt-error" role="alert">{{ receiptError }}</p>
+                <p v-if="receiptSuccess" class="receipt-success" role="status">Entrega registrada con el lote {{ receiptSuccess }}.</p>
+                <div class="receipt-actions">
+                  <button type="button" class="btn-secondary" :disabled="savingReceipt" @click="closeReceiptModal">Cerrar</button>
+                  <button type="submit" class="btn-primary" :disabled="savingReceipt">
+                    <i class="fas fa-truck-ramp-box"></i>{{ savingReceipt ? 'Guardando…' : 'Registrar entrega' }}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>
@@ -524,411 +570,352 @@
 import axios from 'axios';
 import imageCompression from 'browser-image-compression';
 import defaultProductImg from '@/assets/images/default-product.png';
+import realTimeService from '@/services/realTimeService';
 
 export default {
   data() {
     return {
-      // Buscador de productos
       searchQuery: '',
-      // Categoría seleccionada para filtrar
       selectedCategory: '',
-      // Lista de categorías únicas
       categories: [],
-      // Controla si el modal está abierto
-      isModalOpen: false,
-      // Lista de productos obtenidos de la base de datos
       products: [],
-      // Datos del producto nuevo o en edición
-      newProduct: {
-        name: '',
-        description: '',
-        price: '',
-        purchasePrice: '',
-        category: '',
-        marca: '',           // <-- nuevo campo
-        unidad_medida: '',   // <-- nuevo campo
-        stock: '',
-        stockMin: '',
-        stockMax: '',
-        imageFile: null,
-        imagePreview: null,
-      },
-      // Estado de edición
-      isEditing: false,
-      editingProductId: null,
-      // Modo de vista: 'cards' o 'list'
       viewMode: 'cards',
-      defaultProductImg, // <-- agrega aquí
-      // Estado de carga
+      defaultProductImg,
       loading: false,
-      // Controla la visibilidad del modal de producto
+      realtimeRefreshTimer: null,
       showProductModal: false,
-      editingProduct: null, // <--- AGREGA ESTA LÍNEA
-      // Datos del formulario del producto
+      isModalOpen: false,
+      editingProduct: null,
+      savingProduct: false,
+      isImageProcessing: false,
+      productsError: '',
+      formError: '',
+      imageError: '',
       form: {
-        name: '',
-        description: '',
-        price: null,
-        purchasePrice: null,
-        category: '',
-        marca: '',
-        unidad_medida: '',
-        stock: null,
-        stockMin: null,
-        stockMax: null,
-        imageFile: null,
-        imagePreview: null,
+        name: '', description: '', price: null, purchasePrice: null,
+        category: '', marca: '', unidad_medida: '', stock: null,
+        stockMin: null, stockMax: null, imageFile: null, imagePreview: null,
       },
+      receivingProduct: null,
+      productBatches: [],
+      loadingBatches: false,
+      savingReceipt: false,
+      receiptError: '',
+      receiptSuccess: '',
+      receiptForm: { cantidad: 1, codigo_lote: '', proveedor: '', fecha_vencimiento: '' },
     };
   },
   computed: {
-    // Filtra productos según búsqueda y categoría
+    canManageCatalog() {
+      return ['admin', 'supervisor'].includes((localStorage.getItem('userRole') || '').toLowerCase());
+    },
+    canViewCost() {
+      return this.canManageCatalog;
+    },
+    apiBase() {
+      return (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+    },
     filteredProducts() {
+      const query = this.searchQuery.trim().toLocaleLowerCase('es-PE');
       return this.products.filter((product) => {
-        const matchesSearchQuery = product.name
-          .toLowerCase()
-          .includes(this.searchQuery.toLowerCase());
-        const matchesCategory =
-          this.selectedCategory === '' || product.category === this.selectedCategory;
-        return matchesSearchQuery && matchesCategory;
+        const searchableText = [product.name, product.category, product.marca, product.description, product.id]
+          .filter(value => value !== null && value !== undefined)
+          .join(' ')
+          .toLocaleLowerCase('es-PE');
+        return (!query || searchableText.includes(query)) &&
+          (!this.selectedCategory || product.category === this.selectedCategory);
       });
     },
   },
   methods: {
-    // Obtiene los productos desde la API
+    handleRealtimeChange(change = {}) {
+      const entities = change.entities || [];
+      if (entities.length && !entities.some(entity => ['inventory', 'products'].includes(entity))) return;
+      clearTimeout(this.realtimeRefreshTimer);
+      this.realtimeRefreshTimer = setTimeout(() => this.fetchProducts(), 180);
+    },
+    resolveProductImage(image) {
+      if (!image || image === 'null' || image === 'undefined') return this.defaultProductImg;
+      if (/^(https?:|data:|blob:)/i.test(image)) return image;
+      if (image.startsWith('/uploads/')) return `${this.apiBase}${image}`;
+      return image;
+    },
+    handleProductImageError(event) {
+      const image = event.currentTarget;
+      if (image.src !== new URL(this.defaultProductImg, window.location.href).href) {
+        image.src = this.defaultProductImg;
+      }
+    },
+    resetProductFilters() {
+      this.searchQuery = '';
+      this.selectedCategory = '';
+    },
     async fetchProducts() {
       this.loading = true;
+      this.productsError = '';
       try {
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/products`);
-        this.products = response.data.map((product) => ({
+        const { data } = await axios.get(`${this.apiBase}/api/products`);
+        const rows = Array.isArray(data) ? data : [];
+        this.products = rows.map(product => ({
           ...product,
-          image: product.image
-            ? (product.image.startsWith('/uploads/')
-                ? `${import.meta.env.VITE_API_URL}${product.image}`
-                : product.image)
-            : defaultProductImg,
+          image: this.resolveProductImage(product.image),
+          low_stock: product.low_stock ?? (Number(product.stock || 0) <= Number(product.stock_min || 0)),
         }));
-        this.categories = [...new Set(response.data.map((product) => product.category))];
+        this.categories = [...new Set(rows.map(product => String(product.category || '').trim()).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b, 'es'));
       } catch (error) {
+        this.productsError = error.response?.data?.message || 'No se pudieron cargar los productos. Intenta actualizar la lista.';
         console.error('Error al obtener los productos:', error);
       } finally {
         this.loading = false;
       }
     },
-    // Abre el modal para agregar producto
-    openAddProductModal() {
-      this.isModalOpen = true;
-      this.showProductModal = true;
-      this.resetForm();
-    },
-    // Cierra el modal y resetea el formulario
-    closeAddProductModal() {
-      this.isModalOpen = false;
-      this.showProductModal = false;
-      this.isEditing = false;
-      this.editingProductId = null;
-      this.editingProduct = null;
-      this.resetNewProduct();
-    },
-    // Maneja la carga y compresión de la imagen
-    async handleImageUpload(event) {
-      const file = event.target.files[0];
-      const maxSize = 2 * 1024 * 1024; // 2 MB
-
-      if (file) {
-        if (file.size > maxSize) {
-          alert('La imagen es demasiado pesada. El tamaño máximo permitido es de 2 MB.');
-          return;
-        }
-
-        try {
-          const options = {
-            maxSizeMB: 1, // Tamaño máximo en MB después de la compresión
-            maxWidthOrHeight: 800, // Dimensiones máximas
-            useWebWorker: true,
-          };
-          const compressedFile = await imageCompression(file, options);
-
-          // Asigna un nombre con extensión al archivo comprimido
-          const ext = file.name.split('.').pop();
-          const newFile = new File(
-            [compressedFile],
-            `compressed.${ext}`,
-            { type: compressedFile.type }
-          );
-          this.newProduct.imageFile = newFile;
-
-          // Crear una vista previa de la imagen
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            this.newProduct.imagePreview = e.target.result; // Vista previa
-          };
-          reader.readAsDataURL(compressedFile);
-        } catch (error) {
-          console.error('Error al comprimir la imagen:', error);
-        }
-      }
-    },
-    // Agrega un nuevo producto usando FormData
-    async addProduct() {
-      try {
-        // Validar campos obligatorios
-        if (
-          !this.newProduct.name ||
-          !this.newProduct.description ||
-          !this.newProduct.price ||
-          !this.newProduct.purchasePrice ||
-          !this.newProduct.category ||
-          !this.newProduct.marca ||
-          !this.newProduct.unidad_medida ||
-          !this.newProduct.stock ||
-          !this.newProduct.stockMin
-        ) {
-          alert('Por favor, completa todos los campos obligatorios.');
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append('name', this.newProduct.name);
-        formData.append('description', this.newProduct.description);
-        formData.append('price', this.newProduct.price ? Number(this.newProduct.price) : 0);
-        formData.append('purchase_price', this.newProduct.purchasePrice ? Number(this.newProduct.purchasePrice) : 0);
-        formData.append('category', this.newProduct.category);
-        formData.append('marca', this.newProduct.marca); // nuevo
-        formData.append('unidad_medida', this.newProduct.unidad_medida); // nuevo
-        formData.append('stock', this.newProduct.stock ? Number(this.newProduct.stock) : 0);
-        formData.append('stock_min', this.newProduct.stockMin ? Number(this.newProduct.stockMin) : 0);
-        formData.append('stock_max', this.newProduct.stockMax ? Number(this.newProduct.stockMax) : 0);
-
-        // Si hay una imagen seleccionada, agregarla al FormData
-        if (this.newProduct.imageFile) {
-          formData.append('image', this.newProduct.imageFile);
-        }
-
-        // Enviar los datos al backend
-        const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/products`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            Authorization: `Bearer ${token}`
-          },
-        });
-
-        // Agregar el producto a la lista local
-        const product = response.data;
-        product.image = product.image && product.image.startsWith('/uploads/')
-          ? `${import.meta.env.VITE_API_URL}${product.image}`
-          : (product.image || defaultProductImg);
-        this.products.push(product);
-        this.closeAddProductModal();
-      } catch (error) {
-        console.error('Error al agregar el producto:', error.response?.data || error.message);
-      }
-    },
-    // Actualiza un producto existente
-    async updateProduct() {
-      try {
-        const formData = new FormData();
-        formData.append('name', this.newProduct.name);
-        formData.append('description', this.newProduct.description);
-        formData.append('price', this.newProduct.price ? Number(this.newProduct.price) : 0);
-        formData.append('purchase_price', this.newProduct.purchasePrice ? Number(this.newProduct.purchasePrice) : 0);
-        formData.append('category', this.newProduct.category);
-        formData.append('marca', this.newProduct.marca); // nuevo
-        formData.append('unidad_medida', this.newProduct.unidad_medida); // nuevo
-        formData.append('stock', this.newProduct.stock ? Number(this.newProduct.stock) : 0);
-        formData.append('stock_min', this.newProduct.stockMin ? Number(this.newProduct.stockMin) : 0);
-        formData.append('stock_max', this.newProduct.stockMax ? Number(this.newProduct.stockMax) : 0);
-        if (this.newProduct.imageFile) {
-          formData.append('image', this.newProduct.imageFile);
-        }
-        const token = localStorage.getItem('authToken');
-        await axios.put(
-          `${import.meta.env.VITE_API_URL}/api/products/${this.editingProductId}`,
-          formData,
-          {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-              Authorization: `Bearer ${token}`
-            }
-          }
-        );
-        this.fetchProducts();
-        this.closeAddProductModal();
-      } catch (error) {
-        console.error('Error al actualizar el producto:', error.response?.data || error.message);
-      }
-    },
-    // Reinicia los campos del formulario de producto
-    resetNewProduct() {
-      this.newProduct = {
-        name: '',
-        description: '',
-        price: '',
-        purchasePrice: '',
-        category: '',
-        marca: '',           // <-- nuevo campo
-        unidad_medida: '',   // <-- nuevo campo
-        stock: '',
-        stockMin: '',
-        stockMax: '',
-        imageFile: null,
-        imagePreview: null,
-      };
-    },
-    // Abre el modal para editar un producto existente
     editProduct(product) {
-      this.editingProduct = product;
-      this.form = { ...product };
-      this.showProductModal = true;
+      this.openProductModal(product);
     },
-    // Elimina un producto por ID
-    async deleteProduct(productId) {
-      try {
-        const token = localStorage.getItem('authToken');
-        await axios.delete(`${import.meta.env.VITE_API_URL}/api/products/${productId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        this.fetchProducts();
-      } catch (error) {
-        console.error('Error al eliminar el producto:', error);
-      }
-    },
-    // Valida y formatea campos decimales (por ejemplo, precio de compra)
-    validateDecimal(field) {
-      // Reemplaza comas por puntos para manejar decimales
-      this.newProduct[field] = this.newProduct[field]
-        .replace(',', '.')
-        .replace(/[^0-9.]/g, ''); // Permite solo números y puntos
-    },
-    // Cierra el modal de producto
-    closeProductModal() {
-      this.showProductModal = false;
-      this.isModalOpen = false;
-      this.editingProduct = null;
-      this.resetForm();
-      this.resetNewProduct();
-    },
-    // Abre el modal de producto (agregar o editar)
     openProductModal(product = null) {
-      if (product) {
-        this.editingProduct = product;
-        this.form = { ...product, imageFile: null, imagePreview: null };
-      } else {
-        this.editingProduct = null;
-        this.resetForm(); // Limpia el formulario
-        this.resetNewProduct(); // Limpia también el newProduct
-      }
+      this.formError = '';
+      this.imageError = '';
+      this.productsError = '';
+      this.editingProduct = product;
+      this.form = product ? {
+        name: product.name || '',
+        description: product.description || '',
+        price: product.price === null || product.price === undefined ? null : Number(product.price),
+        purchasePrice: Number(product.purchase_price ?? product.purchasePrice ?? 0),
+        category: product.category || '',
+        marca: product.marca || '',
+        unidad_medida: product.unidad_medida || '',
+        stock: Number(product.stock || 0),
+        stockMin: Number(product.stock_min ?? product.stockMin ?? 0),
+        stockMax: Number(product.stock_max ?? product.stockMax ?? 0),
+        imageFile: null,
+        imagePreview: null,
+      } : this.emptyProductForm();
       this.showProductModal = true;
       this.isModalOpen = true;
     },
-    // Reinicia los campos del formulario
-    resetForm() {
-      this.form = {
-        name: '',
-        description: '',
-        price: null,
-        purchasePrice: null,
-        category: '',
-        marca: '',
-        unidad_medida: '',
-        stock: null,
-        stockMin: null,
-        stockMax: null,
-        imageFile: null,
-        imagePreview: null,
+    emptyProductForm() {
+      return {
+        name: '', description: '', price: null, purchasePrice: null,
+        category: '', marca: '', unidad_medida: '', stock: null,
+        stockMin: null, stockMax: null, imageFile: null, imagePreview: null,
       };
     },
-    // Guarda el producto (nuevo o editado)
+    resetForm() {
+      this.form = this.emptyProductForm();
+    },
+    closeProductModal() {
+      if (this.savingProduct || this.isImageProcessing) return;
+      this.showProductModal = false;
+      this.isModalOpen = false;
+      this.editingProduct = null;
+      this.formError = '';
+      this.imageError = '';
+      this.resetForm();
+    },
     async saveProduct() {
+      if (this.savingProduct || this.isImageProcessing) return;
+      this.formError = '';
+      const requiredText = ['name', 'description', 'category', 'marca', 'unidad_medida'];
+      if (requiredText.some(key => !String(this.form[key] || '').trim())) {
+        this.formError = 'Completa nombre, descripción, categoría, marca y unidad de medida.';
+        return;
+      }
+      const hasValue = value => value !== '' && value !== null && value !== undefined;
+      const price = Number(this.form.price);
+      const purchasePrice = Number(this.form.purchasePrice);
+      const stock = Number(this.form.stock);
+      const stockMin = this.form.stockMin === '' || this.form.stockMin === null ? 0 : Number(this.form.stockMin);
+      const stockMax = this.form.stockMax === '' || this.form.stockMax === null ? 0 : Number(this.form.stockMax);
+      if (!hasValue(this.form.price) || !hasValue(this.form.purchasePrice) ||
+          ![price, purchasePrice].every(value => Number.isFinite(value) && value >= 0)) {
+        this.formError = 'Ingresa precios válidos iguales o mayores que cero.';
+        return;
+      }
+      if (!hasValue(this.form.stock) || ![stock, stockMin, stockMax].every(value => Number.isSafeInteger(value) && value >= 0)) {
+        this.formError = 'Las cantidades de stock deben ser números enteros iguales o mayores que cero.';
+        return;
+      }
+      if (stockMax > 0 && stockMax < stockMin) {
+        this.formError = 'El stock máximo debe ser mayor o igual al stock mínimo, o quedar en cero para no limitarlo.';
+        return;
+      }
+
+      this.savingProduct = true;
+      try {
+        const formData = new FormData();
+        formData.append('name', String(this.form.name).trim());
+        formData.append('description', String(this.form.description).trim());
+        formData.append('price', String(price));
+        formData.append('purchase_price', String(purchasePrice));
+        formData.append('category', String(this.form.category).trim());
+        formData.append('marca', String(this.form.marca).trim());
+        formData.append('unidad_medida', String(this.form.unidad_medida).trim());
+        formData.append('stock', String(stock));
+        formData.append('stock_min', String(stockMin));
+        formData.append('stock_max', String(stockMax));
+        if (this.form.imageFile) formData.append('image', this.form.imageFile);
+
+        const token = localStorage.getItem('authToken');
+        const headers = { Authorization: `Bearer ${token}` };
+        if (this.editingProduct?.id) {
+          await axios.put(`${this.apiBase}/api/products/${this.editingProduct.id}`, formData, { headers });
+        } else {
+          await axios.post(`${this.apiBase}/api/products`, formData, { headers });
+        }
+        await this.fetchProducts();
+        this.showProductModal = false;
+        this.isModalOpen = false;
+        this.editingProduct = null;
+        this.resetForm();
+      } catch (error) {
+        this.formError = error.response?.data?.message || 'No se pudo guardar el producto. Revisa los datos e inténtalo nuevamente.';
+        console.error('Error al guardar el producto:', error.response?.data || error);
+      } finally {
+        this.savingProduct = false;
+      }
+    },
+    async deleteProduct(productId) {
+      const product = this.products.find(item => String(item.id) === String(productId));
+      const productName = product?.name || `#${productId}`;
+      if (!window.confirm(`¿Desactivar "${productName}"? Ya no aparecerá en el catálogo ni estará disponible para ventas.`)) return;
+      this.productsError = '';
       try {
         const token = localStorage.getItem('authToken');
-        const formData = new FormData();
-        formData.append('name', this.form.name);
-        formData.append('description', this.form.description);
-        formData.append('price', this.form.price ? Number(this.form.price) : 0);
-        formData.append('purchase_price', this.form.purchasePrice ? Number(this.form.purchasePrice) : 0);
-        formData.append('category', this.form.category);
-        formData.append('marca', this.form.marca);
-        formData.append('unidad_medida', this.form.unidad_medida);
-        formData.append('stock', this.form.stock ? Number(this.form.stock) : 0);
-        formData.append('stock_min', this.form.stockMin ? Number(this.form.stockMin) : 0);
-        formData.append('stock_max', this.form.stockMax ? Number(this.form.stockMax) : 0);
-        formData.append('activo', this.form.activo ?? 1);
-
-        // Adjunta la imagen si fue seleccionada
-        if (this.form.imageFile) {
-          formData.append('image', this.form.imageFile);
-        }
-
-        if (this.editingProduct && this.editingProduct.id) {
-          await axios.put(
-            `${import.meta.env.VITE_API_URL}/api/products/${this.editingProduct.id}`,
-            formData,
-            {
-              headers: {
-                'Content-Type': 'multipart/form-data',
-                Authorization: `Bearer ${token}`
-              }
-            }
-          );
-        } else {
-          await axios.post(
-            `${import.meta.env.VITE_API_URL}/api/products`,
-            formData,
-            {
-              headers: {
-                'Content-Type': 'multipart/form-data',
-                Authorization: `Bearer ${token}`
-              }
-            }
-          );
-        }
-        this.showProductModal = false;
-        this.fetchProducts();
-      } catch (err) {
-        console.error('Error al guardar el producto:', err.response?.data || err);
+        await axios.delete(`${this.apiBase}/api/products/${productId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        await this.fetchProducts();
+      } catch (error) {
+        this.productsError = error.response?.data?.message || 'No se pudo desactivar el producto. Intenta nuevamente.';
+        console.error('Error al desactivar el producto:', error);
       }
     },
-    // Agregar producto
-    async agregarProducto() {
-      const token = localStorage.getItem('authToken');
-      await axios.post('/api/products', this.form, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-    },
-
-    // Editar producto
-    async editarProducto() {
-      const token = localStorage.getItem('authToken');
-      await axios.put(`/api/products/${this.editingProduct.id}`, this.form, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-    },
-    onImageChange(event) {
-      const file = event.target.files[0];
-      if (file) {
-        this.form.imageFile = file;
-        
-        // Crear previsualización de la imagen
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          this.form.imagePreview = e.target.result;
-        };
-        reader.readAsDataURL(file);
+    async onImageChange(event) {
+      const input = event.target;
+      const file = input.files?.[0];
+      this.imageError = '';
+      if (!file) return;
+      const maxSize = 2 * 1024 * 1024;
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      const mimeByExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
+      const expectedMime = mimeByExt[ext];
+      if (!expectedMime || (file.type && file.type !== expectedMime)) {
+        this.imageError = 'Formato no válido. Sube una imagen JPG, PNG o GIF.';
+        input.value = '';
+        return;
       }
+      if (file.size > maxSize) {
+        this.imageError = 'La imagen supera el límite de 2 MB.';
+        input.value = '';
+        return;
+      }
+
+      this.isImageProcessing = true;
+      try {
+        let blob = file;
+        if (file.type !== 'image/gif') {
+          try {
+            blob = await imageCompression(file, { maxSizeMB: 1, maxWidthOrHeight: 1200, useWebWorker: true });
+          } catch (compressionError) {
+            console.warn('No se pudo optimizar la imagen; se usará el archivo original.', compressionError);
+          }
+        }
+        const outputType = blob.type || expectedMime;
+        const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif' }[outputType];
+        if (!extension) throw new Error('El formato de la imagen optimizada no es compatible.');
+        this.form.imageFile = new File([blob], `producto-${Date.now()}.${extension}`, { type: outputType });
+        this.form.imagePreview = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('No se pudo leer la imagen seleccionada.'));
+          reader.readAsDataURL(blob);
+        });
+      } catch (error) {
+        this.imageError = error.message || 'No se pudo procesar la imagen.';
+        this.form.imageFile = null;
+        this.form.imagePreview = null;
+      } finally {
+        this.isImageProcessing = false;
+        input.value = '';
+      }
+    },
+    async openReceiptModal(product) {
+      this.receivingProduct = product;
+      this.productBatches = [];
+      this.receiptError = '';
+      this.receiptSuccess = '';
+      this.receiptForm = { cantidad: 1, codigo_lote: '', proveedor: '', fecha_vencimiento: '' };
+      await this.loadProductBatches();
+    },
+    closeReceiptModal() {
+      if (this.savingReceipt) return;
+      this.receivingProduct = null;
+      this.productBatches = [];
+      this.receiptError = '';
+      this.receiptSuccess = '';
+    },
+    async loadProductBatches() {
+      const productId = this.receivingProduct?.id;
+      if (!productId) return;
+      this.loadingBatches = true;
+      try {
+        const token = localStorage.getItem('authToken');
+        const { data } = await axios.get(`${this.apiBase}/api/products/${productId}/batches`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (String(this.receivingProduct?.id) === String(productId)) this.productBatches = Array.isArray(data) ? data : [];
+      } catch (error) {
+        this.receiptError = error.response?.data?.message || 'No se pudieron cargar los lotes.';
+      } finally {
+        if (String(this.receivingProduct?.id) === String(productId)) this.loadingBatches = false;
+      }
+    },
+    async submitStockReceipt() {
+      const productId = this.receivingProduct?.id;
+      if (!productId || this.savingReceipt) return;
+      this.savingReceipt = true;
+      this.receiptError = '';
+      this.receiptSuccess = '';
+      try {
+        const token = localStorage.getItem('authToken');
+        const { data } = await axios.post(`${this.apiBase}/api/products/${productId}/receipts`, this.receiptForm, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        this.receiptSuccess = data.codigo_lote;
+        this.receiptForm = { cantidad: 1, codigo_lote: '', proveedor: '', fecha_vencimiento: '' };
+        await this.fetchProducts();
+        if (String(this.receivingProduct?.id) === String(productId)) {
+          this.receivingProduct = this.products.find(product => String(product.id) === String(productId)) || this.receivingProduct;
+          await this.loadProductBatches();
+        }
+      } catch (error) {
+        this.receiptError = error.response?.data?.message || 'No se pudo registrar la entrega.';
+      } finally {
+        this.savingReceipt = false;
+      }
+    },
+    formatBatchDate(value) {
+      if (!value) return '—';
+      const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const date = dateOnly
+        ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+        : new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-PE', { year: 'numeric', month: 'short', day: 'numeric' });
     },
   },
   mounted() {
-    // Al montar, obtiene productos y verifica si hay que editar alguno por query
+    realTimeService.addListener('data_changed', this.handleRealtimeChange);
     this.fetchProducts().then(() => {
-      const editId = this.$route.query.edit;
-      if (editId) {
-        const product = this.products.find(p => p.id == editId);
-        if (product) {
-          this.editProduct(product);
-        }
-      }
+      const editId = this.$route?.query?.edit;
+      const product = this.products.find(item => String(item.id) === String(editId));
+      if (editId && product) this.editProduct(product);
     });
+  },
+  beforeUnmount() {
+    realTimeService.removeListener('data_changed', this.handleRealtimeChange);
+    clearTimeout(this.realtimeRefreshTimer);
   },
 };
 </script>

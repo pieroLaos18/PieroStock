@@ -1,57 +1,66 @@
 <template>
-  <aside :class="['sidebar', { collapsed: shouldBeCollapsed }]">
-    <!-- Botón de colapsar -->
-    <button class="toggle-btn" @click="toggleSidebar">
-      <i :class="shouldBeCollapsed ? 'fas fa-chevron-right' : 'fas fa-chevron-left'"></i>
-    </button>
-
-    <!-- Usuario -->
-    <div class="sidebar-user">
-      <img 
-        :src="userImage" 
-        class="user-image" 
-        @error="handleImageError"
-        @load="handleImageLoad"
-      />
-      <span v-if="!shouldBeCollapsed" class="sidebar-username">{{ userName }}</span>
-      <span v-if="!shouldBeCollapsed" class="sidebar-role">{{ role }}</span>
+  <aside id="app-sidebar" :class="['sidebar', 'demo-sidebar', { collapsed: shouldBeCollapsed, 'mobile-hidden': isMobileHidden }]" aria-label="Navegación principal" :aria-hidden="isMobileHidden" :inert="isMobileHidden">
+    <div class="demo-brand-row">
+      <router-link class="demo-brand" :to="homeRoute" aria-label="PieroStock, ir a la página principal" @click="closeMobileMenu">
+        <span class="demo-brand-mark"><i class="fas fa-cube" aria-hidden="true"></i></span>
+        <span v-if="!shouldBeCollapsed"><strong>PieroStock</strong><small>Ventas e inventario</small></span>
+      </router-link>
+      <button v-if="!isSmallScreen" class="demo-collapse-toggle" type="button" :aria-label="isCollapsed ? 'Expandir menú' : 'Contraer menú'" :title="isCollapsed ? 'Expandir menú' : 'Contraer menú'" @click="toggleSidebar">
+        <i :class="isCollapsed ? 'fas fa-angles-right' : 'fas fa-angles-left'" aria-hidden="true"></i>
+      </button>
     </div>
 
-    <!-- Menú -->
-    <nav class="sidebar-menu">
+    <div v-if="!shouldBeCollapsed" class="demo-workspace" aria-label="Negocio actual">
+      <span class="workspace-dot" aria-hidden="true"></span><span>Mi negocio</span>
+    </div>
+    <p v-if="!shouldBeCollapsed" class="demo-nav-label">MENÚ PRINCIPAL</p>
+    <nav class="sidebar-menu demo-nav" aria-label="Menú principal">
       <ul>
         <li v-if="['admin', 'supervisor'].includes(role)">
-          <router-link to="/main/dashboard">
-            <i class="fas fa-home"></i>
-            <span v-if="!shouldBeCollapsed">Escritorio</span>
+          <router-link to="/main/dashboard" title="Resumen" aria-label="Resumen" @click="closeMobileMenu">
+            <i class="fas fa-grid-2"></i>
+            <span v-if="!shouldBeCollapsed">Resumen</span>
           </router-link>
         </li>
         <li v-if="['admin', 'supervisor', 'almacenero'].includes(role)">
-          <router-link to="/main/products">
-            <i class="fas fa-box"></i>
+          <router-link to="/main/products" title="Productos" aria-label="Productos" @click="closeMobileMenu">
+            <i class="fas fa-boxes-stacked"></i>
             <span v-if="!shouldBeCollapsed">Productos</span>
           </router-link>
         </li>
         <li v-if="['admin', 'supervisor', 'cajero'].includes(role)">
-          <router-link to="/main/sales">
-            <i class="fas fa-cash-register"></i>
+          <router-link to="/main/sales" title="Ventas" aria-label="Ventas" @click="closeMobileMenu">
+            <i class="fas fa-receipt"></i>
             <span v-if="!shouldBeCollapsed">Ventas</span>
           </router-link>
         </li>
         <li v-if="['admin', 'supervisor'].includes(role)">
-          <router-link to="/main/reports">
-            <i class="fas fa-chart-line"></i>
+          <router-link to="/main/reports" title="Reportes" aria-label="Reportes" @click="closeMobileMenu">
+            <i class="fas fa-chart-pie"></i>
             <span v-if="!shouldBeCollapsed">Reportes</span>
           </router-link>
         </li>
         <li v-if="role === 'admin'">
-          <router-link to="/main/users">
+          <router-link to="/main/users" title="Equipo" aria-label="Equipo" @click="closeMobileMenu">
             <i class="fas fa-users"></i>
-            <span v-if="!shouldBeCollapsed">Usuarios</span>
+            <span v-if="!shouldBeCollapsed">Equipo</span>
+          </router-link>
+        </li>
+        <li v-if="['admin', 'supervisor'].includes(role)">
+          <router-link to="/main/actividades" title="Actividad" aria-label="Actividad" @click="closeMobileMenu">
+            <i class="fas fa-clock-rotate-left"></i>
+            <span v-if="!shouldBeCollapsed">Actividad</span>
           </router-link>
         </li>
       </ul>
     </nav>
+    <div class="demo-sidebar-bottom">
+      <img :src="userImage" class="demo-user-photo" :alt="`Foto de ${userName || 'usuario'}`" @error="handleImageError" />
+      <div v-if="!shouldBeCollapsed" class="demo-user-info">
+        <strong>{{ userName || 'Usuario' }}</strong>
+        <span>{{ role }}</span>
+      </div>
+    </div>
   </aside>
 </template>
 
@@ -75,47 +84,38 @@ export default {
     };
   },
   computed: {
+    homeRoute() {
+      if (this.role === 'cajero') return '/main/sales';
+      if (this.role === 'almacenero') return '/main/products';
+      return '/main/dashboard';
+    },
     shouldBeCollapsed() {
-      // En pantallas pequeñas, si no está visible, se colapsa completamente
-      // En pantallas grandes, solo se colapsa si isCollapsed es true
-      if (this.isSmallScreen) {
-        return !this.visible || this.isCollapsed;
-      } else {
-        return !this.visible || this.isCollapsed;
-      }
-    }
-  },
-  watch: {
-    // Observar cambios en la imagen del usuario
-    userImage: {
-      handler(newImage) {
-        console.log('🖼️ Imagen del usuario actualizada en Sidebar:', newImage);
-      },
-      immediate: true
+      if (this.isSmallScreen) return false;
+      return !this.visible || this.isCollapsed;
+    },
+    isMobileHidden() {
+      return this.isSmallScreen && !this.visible;
     }
   },
   methods: {
     toggleSidebar() {
-      // En pantallas pequeñas, también cambiar la visibilidad
       if (this.isSmallScreen) {
         this.$emit('toggle', !this.visible);
       } else {
-        // En pantallas grandes, solo cambiar el colapso
         this.isCollapsed = !this.isCollapsed;
-        this.$emit('toggle', this.shouldBeCollapsed);
       }
+    },
+    closeMobileMenu() {
+      if (this.isSmallScreen && this.visible) this.$emit('toggle', false);
     },
     handleImageError(event) {
-      console.warn('❌ Error cargando imagen del usuario en Sidebar:', event.target.src);
-      // Intentar primero con imagen local, luego con fallback base64
-      if (event.target.src !== defaultUserImage) {
-        event.target.src = defaultUserImage;
+      const image = event.currentTarget;
+      const defaultImageUrl = new URL(defaultUserImage, window.location.href).href;
+      if (image.src !== defaultImageUrl) {
+        image.src = defaultImageUrl;
       } else {
-        event.target.src = this.fallbackImage;
+        image.src = this.fallbackImage;
       }
-    },
-    handleImageLoad(event) {
-      console.log('✅ Imagen del usuario cargada en Sidebar:', event.target.src);
     }
   }
 };
@@ -249,5 +249,226 @@ export default {
   opacity: 0;
   pointer-events: none;
   display: none;
+}
+
+.sidebar.demo-sidebar {
+  position: sticky;
+  top: 0;
+  left: auto;
+  z-index: 5;
+  width: 238px;
+  height: 100vh;
+  height: 100dvh;
+  flex: 0 0 238px;
+  gap: 0;
+  padding: 23px 16px 17px;
+  overflow: auto;
+  border-right: 1px solid rgba(255, 255, 255, .08);
+  background: #102436;
+  color: #edf6f7;
+  box-shadow: none;
+}
+
+.sidebar.demo-sidebar.collapsed {
+  width: 72px;
+  flex-basis: 72px;
+  padding-inline: 12px;
+}
+
+.sidebar.demo-sidebar.collapsed .demo-brand-row {
+  justify-content: center;
+  flex-wrap: wrap;
+  row-gap: 7px;
+}
+
+.sidebar.demo-sidebar.collapsed .demo-brand-row .demo-brand {
+  flex: 0 0 40px;
+}
+
+.sidebar.demo-sidebar.collapsed .demo-collapse-toggle {
+  width: 27px;
+  height: 27px;
+  flex-basis: 27px;
+}
+
+.demo-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 40px;
+  margin: 0 3px 25px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.demo-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 25px;
+}
+
+.demo-brand-row .demo-brand {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 0 0 3px;
+}
+
+.demo-collapse-toggle {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border: 1px solid rgba(210, 229, 236, .12);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .045);
+  color: #8ca5b0;
+  cursor: pointer;
+}
+
+.demo-collapse-toggle:hover {
+  border-color: rgba(63, 200, 169, .32);
+  background: rgba(37, 172, 154, .15);
+  color: #72decd;
+}
+
+.demo-brand-mark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border: 1px solid rgba(75, 208, 190, .28);
+  border-radius: 13px;
+  background: rgba(49, 191, 171, .14);
+  color: #69d8c7;
+}
+
+.demo-brand strong,
+.demo-brand small {
+  display: block;
+  white-space: nowrap;
+}
+
+.demo-brand strong { color: #f2f8f8; font-size: .91rem; letter-spacing: -.02em; }
+.demo-brand small { margin-top: 2px; color: #9aafba; font-size: .68rem; }
+
+.demo-workspace {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 42px;
+  padding: 0 11px;
+  border: 1px solid rgba(207, 229, 234, .1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .045);
+  color: #dce8eb;
+  font-size: .76rem;
+  font-weight: 600;
+}
+
+.workspace-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3fc8a9;
+  box-shadow: 0 0 0 3px rgba(63, 200, 169, .12);
+}
+
+.demo-workspace i { margin-left: auto; color: #849aa5; font-size: .65rem; }
+.demo-nav-label { margin: 26px 10px 9px; color: #758d9a; font-size: .62rem; font-weight: 750; letter-spacing: .12em; }
+
+.sidebar.demo-sidebar .sidebar-menu {
+  flex: 1;
+  padding: 0;
+}
+
+.sidebar.demo-sidebar .sidebar-menu ul {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+}
+
+.sidebar.demo-sidebar .sidebar-menu li { margin: 0; }
+
+.sidebar.demo-sidebar .sidebar-menu a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #aabcc5;
+  font-size: .77rem;
+  font-weight: 570;
+  text-decoration: none;
+  transition: background .16s ease, color .16s ease;
+}
+
+.sidebar.demo-sidebar .sidebar-menu a i {
+  width: 17px;
+  color: #8ba2ae;
+  font-size: .85rem;
+  text-align: center;
+}
+
+.sidebar.demo-sidebar .sidebar-menu a:hover,
+.sidebar.demo-sidebar .sidebar-menu a.router-link-exact-active {
+  transform: none;
+  border-color: rgba(63, 200, 169, .15);
+  background: rgba(37, 172, 154, .15);
+  color: #eafffb;
+}
+
+.sidebar.demo-sidebar .sidebar-menu a:hover i,
+.sidebar.demo-sidebar .sidebar-menu a.router-link-exact-active i { color: #61d7c4; }
+
+.demo-sidebar-bottom {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: auto;
+  padding: 14px 3px 2px;
+  border-top: 1px solid rgba(221, 238, 240, .1);
+}
+
+.demo-user-photo {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid #a4d3d5;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.demo-user-info { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.demo-user-info strong { overflow: hidden; color: #f3f7f8; font-size: .69rem; text-overflow: ellipsis; white-space: nowrap; }
+.demo-user-info span { color: #8ca3af; font-size: .64rem; text-transform: capitalize; }
+
+@media (max-width: 760px) {
+  .sidebar.demo-sidebar {
+    position: relative;
+    width: 100%;
+    height: auto;
+    flex: 0 0 auto;
+    padding: 12px 15px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+  }
+
+  .sidebar.demo-sidebar .demo-brand-row { margin: 0 0 11px; }
+  .sidebar.demo-sidebar .demo-brand { margin: 0 3px; }
+  .sidebar.demo-sidebar .demo-workspace,
+  .sidebar.demo-sidebar .demo-nav-label,
+  .sidebar.demo-sidebar .demo-sidebar-bottom { display: none; }
+  .sidebar.demo-sidebar .sidebar-menu { overflow-x: auto; }
+  .sidebar.demo-sidebar .sidebar-menu ul { display: flex; gap: 4px; width: max-content; }
+  .sidebar.demo-sidebar .sidebar-menu a { width: auto; min-width: max-content; min-height: 36px; padding: 0 9px; font-size: .66rem; }
+  .sidebar.demo-sidebar .sidebar-menu a i { width: auto; }
 }
 </style>

@@ -1,190 +1,105 @@
 <template>
   <div class="dashboard-page">
-    <!-- Cabecera mejorada para Dashboard -->
-    <div class="dashboard-header">
-      <div class="header-content">
-        <div class="header-left">
-          <div class="header-icon">
-            <i class="fas fa-chart-line"></i>
-          </div>
-          <div class="header-text">
-            <h1>Dashboard</h1>
-            <p class="header-subtitle">Panel de control y estadísticas en tiempo real</p>
-            <div class="header-stats">
-              <div class="stat-item">
-                <span class="stat-number">{{ resumenVentas.hoy }}</span>
-                <span class="stat-label">Ventas Hoy</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ resumenVentas.mes }}</span>
-                <span class="stat-label">Ventas Mes</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ resumenUsuarios.activos }}</span>
-                <span class="stat-label">Usuarios</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="header-actions">
-          <!-- Indicador de tiempo real -->
-          <div class="real-time-indicator" :class="realTimeStatus">
-            <div class="status-dot"></div>
-            <div class="status-info">
-              <div class="status-label">Tiempo Real</div>
-              <div class="status-text">
-                {{ realTimeStatus === 'connected' ? 'Conectado' : 
-                   realTimeStatus === 'connecting' ? 'Conectando...' : 'Desconectado' }}
-                <span v-if="realTimeType" class="connection-type">({{ realTimeType }})</span>
-              </div>
-              <div v-if="lastUpdate" class="last-update">
-                Última actualización: {{ formatTimeAgo(lastUpdate) }}
-              </div>
-            </div>
-          </div>
-          
-          <button class="btn-refresh" @click="refreshData" :disabled="loading">
-            <i class="fas fa-sync-alt" :class="{ 'fa-spin': loading }"></i>
-            <span>{{ loading ? 'Cargando...' : 'Actualizar' }}</span>
-          </button>
-        </div>
+    <div class="page-heading dashboard-page-heading">
+      <div>
+        <p class="eyebrow">{{ todayLabel }}</p>
+        <h1>Resumen del negocio</h1>
+        <p>Así marcha tu tienda. Aquí tienes lo importante de hoy.</p>
+      </div>
+      <div class="dashboard-heading-actions">
+        <span class="connection-pill" :class="realTimeStatus"><i></i>{{ realTimeStatus === 'connected' ? 'En tiempo real' : realTimeStatus === 'connecting' ? 'Conectando' : 'Sin conexión en tiempo real' }}</span>
+        <router-link to="/main/sales" class="primary-button"><i class="fas fa-plus"></i> Registrar venta</router-link>
       </div>
     </div>
 
-    <!-- Loader animado -->
-    <div v-if="loading" class="loader"></div>
+    <div v-if="loading" class="dashboard-loading"><span class="loader"></span><span>Actualizando los datos del negocio…</span></div>
 
-    <!-- Secciones principales -->
     <div v-else class="dashboard-content">
-      <!-- Sección de gráficos -->
-      <section class="charts-section">
-        <div class="section-header">
-          <h2><i class="fas fa-chart-bar"></i> Análisis de Ventas</h2>
-        </div>
-        <div class="charts-grid">
-          <div class="chart-card">
-            <div class="chart-header">
-              <h3>Métodos de Pago</h3>
-              <div class="chart-info">
-                <i class="fas fa-info-circle" title="Distribución de métodos de pago utilizados"></i>
-              </div>
-            </div>
-            <div class="chart-wrapper" v-if="metodosPago.length > 0">
-              <Pie 
-                :key="`pie-chart-${metodosPago.length}`"
-                :data="chartDataMetodosPago" 
-                :options="pieOptions" 
-              />
-            </div>
-            <div v-else class="no-data-msg">
-              <i class="fas fa-chart-pie"></i>
-              <p>No hay datos de métodos de pago</p>
-            </div>
-          </div>
-          
-          <div class="chart-card">
-            <div class="chart-header">
-              <h3>Ventas por Día</h3>
-              <div class="chart-info">
-                <i class="fas fa-info-circle" title="Evolución de ventas en los últimos días"></i>
-              </div>
-            </div>
-            <div class="chart-wrapper" v-if="ventasPorDia.length > 0">
-              <Bar 
-                :key="`bar-chart-${ventasPorDia.length}-${Date.now()}`"
-                :data="chartDataVentasPorDia" 
-                :options="barOptions" 
-              />
-            </div>
-            <div v-else class="no-data-msg">
-              <i class="fas fa-chart-bar"></i>
-              <h4>Sin datos de ventas por día</h4>
-              <p v-if="ventasPorDiaError">{{ ventasPorDiaError }}</p>
-              <p v-else>El gráfico se mostrará cuando el servidor esté funcionando correctamente</p>
-              <div v-if="ventasPorDiaError && ventasPorDiaError.includes('sql_mode')" class="error-details">
-                <i class="fas fa-wrench"></i>
-                <span>Problema técnico del servidor - contacta al administrador</span>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div v-if="dashboardWarnings.length" class="dashboard-warning" role="status">
+        <i class="fas fa-circle-exclamation"></i>
+        <span>{{ dashboardWarnings.join(' · ') }}</span>
+        <button type="button" @click="refreshData" :disabled="isRefreshing">{{ isRefreshing ? 'Actualizando…' : 'Reintentar' }}</button>
+      </div>
+      <section class="metric-grid">
+        <article class="metric-card"><div class="metric-top"><span>Ventas del mes</span><span class="metric-icon teal"><i class="fas fa-wallet"></i></span></div><strong>S/ {{ formatCurrency(resumenVentas.mes) }}</strong><small class="metric-foot">Ingresos registrados este mes</small></article>
+        <article class="metric-card"><div class="metric-top"><span>Ventas de hoy</span><span class="metric-icon blue"><i class="fas fa-receipt"></i></span></div><strong>S/ {{ formatCurrency(resumenVentas.hoy) }}</strong><small class="metric-foot">Ingresos registrados hoy</small></article>
+        <article class="metric-card"><div class="metric-top"><span>Usuarios activos</span><span class="metric-icon violet"><i class="fas fa-users"></i></span></div><strong>{{ resumenUsuarios.activos }}</strong><small class="metric-foot">Cuentas habilitadas</small></article>
+        <article class="metric-card"><div class="metric-top"><span>Productos activos</span><span class="metric-icon amber"><i class="fas fa-box"></i></span></div><strong>{{ inventoryCount }}</strong><small class="metric-foot">{{ lowStockCount }} requieren revisar stock</small></article>
       </section>
 
-      <!-- Sección de productos más vendidos -->
-      <section class="top-products-section">
-        <div class="section-header">
-          <h2><i class="fas fa-trophy"></i> Productos Más Vendidos</h2>
-          <router-link to="/main/products" class="section-link">
-            <i class="fas fa-external-link-alt"></i>
-            Ver todos
-          </router-link>
-        </div>
-        <div class="top-products-grid">
-          <div v-if="topProducts.length === 0" class="no-data-msg">
-            <i class="fas fa-box-open"></i>
-            <p>No hay datos de productos vendidos</p>
-          </div>
-          <div v-else v-for="(product, index) in topProducts" :key="product.id" class="product-rank-card">
-            <div class="rank-badge" :class="'rank-' + (index + 1)">
-              <span class="rank-number">{{ index + 1 }}</span>
-              <i v-if="index === 0" class="fas fa-crown"></i>
-              <i v-else-if="index === 1" class="fas fa-medal"></i>
-              <i v-else class="fas fa-award"></i>
-            </div>
-            <div class="product-info">
-              <div class="product-image">
-                <img :src="product.image || defaultProductImg" :alt="product.name" />
-              </div>
-              <div class="product-details">
-                <h4 class="product-name">{{ product.name }}</h4>
-                <p class="product-category">{{ product.category }}</p>
-                <div class="product-stats">
-                  <div class="stat">
-                    <span class="stat-label">Vendidos:</span>
-                    <span class="stat-value">{{ product.cantidad_vendida }}</span>
-                  </div>
-                  <div class="stat">
-                    <span class="stat-label">Ingresos:</span>
-                    <span class="stat-value">S/ {{ formatCurrency(product.total_ingresos) }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <section class="dashboard-grid">
+        <article class="demo-panel chart-panel">
+          <div class="panel-heading"><div><h2>Ventas de los últimos 7 días</h2><p>Ingresos diarios · soles</p></div><div class="chart-heading-actions"><strong class="chart-period-total">S/ {{ formatCurrency(weeklySalesTotal) }}</strong><button class="soft-select" type="button" @click="refreshData" :disabled="isRefreshing"><i class="fas fa-rotate" :class="{ 'fa-spin': isRefreshing }"></i><span>{{ isRefreshing ? 'Actualizando…' : 'Actualizar' }}</span></button></div></div>
+          <div v-if="weeklySalesSeries.some(day => day.total > 0)" class="real-chart-wrap" role="img" aria-label="Gráfico de ingresos por día de los últimos siete días"><Bar :data="chartDataVentasPorDia" :options="barOptions" /></div>
+          <div v-else class="dashboard-empty"><i class="fas fa-chart-column"></i><strong>{{ ventasPorDiaError ? 'No se pudo cargar el gráfico' : 'Sin ventas en los últimos 7 días' }}</strong><span>{{ ventasPorDiaError || 'Cuando se registren ventas, aparecerá aquí el movimiento diario.' }}</span></div>
+        </article>
+
+        <article class="demo-panel seller-highlight">
+          <div class="panel-heading"><div><h2>Mejor vendedor</h2><p>Por monto vendido · ventas vigentes</p></div><i class="fas fa-ellipsis" aria-hidden="true"></i></div>
+          <template v-if="topSellers.length">
+            <div class="seller-feature"><span class="seller-crown"><i class="fas fa-crown"></i></span><div class="seller-photo">{{ getInitials(topSellers[0].nombre) }}</div><div class="seller-person"><strong>{{ topSellers[0].nombre }}</strong><span>{{ getRoleDisplayName(topSellers[0].rol) }}</span></div></div>
+            <div class="seller-total"><strong>S/ {{ formatCurrency(topSellers[0].total_vendido) }}</strong><span>{{ topSellers[0].ventas_realizadas }} {{ topSellers[0].ventas_realizadas === 1 ? 'venta' : 'ventas' }}</span></div>
+            <div v-if="topSellers.length > 1" class="seller-secondary-list"><div v-for="(seller, index) in topSellers.slice(1, 4)" :key="seller.id"><span>{{ String(index + 2).padStart(2, '0') }}</span><strong>{{ seller.nombre }}</strong><b>S/ {{ formatCurrency(seller.total_vendido) }}</b></div></div>
+          </template>
+          <div v-else class="dashboard-empty compact"><i class="fas fa-user-tie"></i><strong>{{ dashboardErrors.insights ? 'No se pudo cargar el ranking' : 'Aún no hay ventas atribuidas' }}</strong><span>{{ dashboardErrors.insights || 'El ranking se actualizará al registrar ventas.' }}</span></div>
+        </article>
       </section>
 
-      <!-- Sección de actividades recientes -->
-      <section class="recent-activities-section">
-        <div class="section-header">
-          <h2><i class="fas fa-history"></i> Actividades Recientes</h2>
-          <router-link to="/main/actividades" class="section-link">
-            <i class="fas fa-list"></i>
-            Ver historial completo
-          </router-link>
-        </div>
-        <div class="activities-list">
-          <div v-if="recentActivities.length === 0" class="no-data-msg">
-            <i class="fas fa-clipboard-list"></i>
-            <p>No hay actividades registradas</p>
+      <section class="demo-panel payment-mix-panel">
+        <div class="panel-heading"><div><h2>Medios de pago</h2><p>Distribución de ingresos de ventas vigentes</p></div><span class="chart-context-pill">{{ paymentStats.length }} {{ paymentStats.length === 1 ? 'medio' : 'medios' }}</span></div>
+        <div v-if="paymentStats.length" class="payment-chart-layout">
+          <div class="payment-chart-wrap">
+            <Doughnut :data="chartDataMetodosPago" :options="doughnutOptions" />
+            <div class="payment-chart-center"><span>Total cobrado</span><strong>S/ {{ formatCurrency(paymentTotal) }}</strong></div>
           </div>
-          <div v-else v-for="activity in recentActivities" :key="activity.id" class="activity-item">
-            <div class="activity-icon">
-              <i :class="getActivityIcon(activity.tipo)"></i>
-            </div>
-            <div class="activity-content">
-              <div class="activity-description">{{ activity.descripcion }}</div>
-              <div class="activity-meta">
-                <span class="activity-user">{{ activity.usuario || 'Sistema' }}</span>
-                <span class="activity-time">{{ formatTimeAgo(activity.fecha) }}</span>
-              </div>
-            </div>
-            <div class="activity-type" :class="'type-' + activity.tipo">
-              {{ getActivityTypeName(activity.tipo) }}
+          <div class="payment-legend" aria-label="Detalle de ingresos por medio de pago">
+            <div v-for="method in paymentStats" :key="method.key" class="payment-legend-row">
+              <span class="payment-legend-dot" :style="{ '--legend-color': method.color }"></span>
+              <span class="payment-legend-name">{{ method.label }}</span>
+              <span class="payment-legend-share">{{ method.percent }}%</span>
+              <strong>S/ {{ formatCurrency(method.total) }}</strong>
+              <span class="payment-legend-track"><i :style="{ width: `${method.percent}%`, backgroundColor: method.color }"></i></span>
             </div>
           </div>
         </div>
+        <div v-else class="dashboard-empty compact"><i class="fas fa-credit-card"></i><strong>Sin pagos registrados</strong><span>El resumen por medio de pago se completará con las ventas vigentes.</span></div>
+      </section>
+
+      <section class="demo-panel dashboard-list-panel">
+        <div class="panel-heading"><div><h2>Productos más vendidos</h2><p>Rendimiento según ventas registradas</p></div><router-link to="/main/products" class="text-button">Ver inventario <i class="fas fa-arrow-right"></i></router-link></div>
+        <div v-if="topProducts.length" class="best-sellers">
+          <article v-for="(product, index) in topProducts.slice(0, 5)" :key="product.id" class="best-seller-row">
+            <span class="rank-pill">{{ String(index + 1).padStart(2, '0') }}</span>
+            <span class="product-thumb"><img :src="product.image || defaultProductImg" :alt="product.name" @error="$event.target.src = defaultProductImg" /></span>
+            <span class="best-product-name"><strong>{{ product.name }}</strong><small>{{ product.category || 'Sin categoría' }}</small></span>
+            <span class="sold-count">{{ product.cantidad_vendida }} <small>vendidos</small></span>
+            <div class="sold-bar"><i :style="{ width: `${Math.max(4, Number(product.cantidad_vendida || 0) / Number(topProducts[0].cantidad_vendida || 1) * 100)}%` }"></i></div>
+            <strong class="sold-income">S/ {{ formatCurrency(product.total_ingresos) }}</strong>
+          </article>
+        </div>
+        <div v-else class="dashboard-empty"><i class="fas fa-box-open"></i><strong>{{ dashboardErrors.products ? 'No se pudo cargar el ranking' : 'No hay productos vendidos todavía' }}</strong><span>{{ dashboardErrors.products || 'El ranking aparecerá cuando se registren ventas.' }}</span></div>
+      </section>
+
+      <section class="demo-panel restock-panel">
+        <div class="panel-heading"><div><h2><i class="fas fa-wand-magic-sparkles heading-accent"></i> Reposición sugerida</h2><p>Pronóstico estacional calculado a partir del historial real</p></div><span class="forecast-badge">{{ upcomingMonths.length ? upcomingMonths.join(' · ') : 'Patrón estacional' }}</span></div>
+        <div v-if="restockRecommendations.length" class="restock-list">
+          <article v-for="item in restockRecommendations" :key="item.id" class="restock-row">
+            <span class="product-thumb coral"><img :src="resolveProductImage(item.image)" :alt="item.name" @error="$event.target.src = defaultProductImg" /></span>
+            <div class="restock-name"><strong>{{ item.name }}</strong><small>Mayor demanda prevista en {{ item.peak_month }} · historial de {{ historyMonths }} meses</small></div>
+            <span class="stock-current"><small>Stock</small><b>{{ item.stock }} un.</b></span>
+            <span class="stock-demand"><small>Demanda media</small><b>{{ item.average_units }} un.</b></span>
+            <span class="buy-suggest"><small>Reponer</small><b>{{ item.recommended_units }} un.</b></span>
+            <router-link to="/main/products" class="icon-button" title="Ir al inventario"><i class="fas fa-arrow-right"></i></router-link>
+          </article>
+        </div>
+        <div v-else class="dashboard-empty compact"><i class="fas fa-chart-line"></i><strong>{{ dashboardErrors.insights ? 'No se pudo calcular la reposición' : 'Sin una tendencia estacional confirmada' }}</strong><span>{{ dashboardErrors.insights || 'Se necesita historial suficiente para sugerir compras con confianza.' }}</span></div>
+        <p v-if="!dashboardErrors.insights" class="restock-footnote"><i class="fas fa-circle-info"></i> La recomendación usa meses equivalentes de años anteriores y considera el stock mínimo configurado.</p>
+      </section>
+
+      <section class="demo-panel recent-panel">
+        <div class="panel-heading"><div><h2>Actividad reciente</h2><p>Los últimos movimientos del negocio</p></div><router-link to="/main/actividades" class="text-button">Ver actividad <i class="fas fa-arrow-right"></i></router-link></div>
+        <div v-if="recentActivities.length" class="activity-list"><article v-for="activity in recentActivities.slice(0, 5)" :key="activity.id" class="activity-row"><span class="activity-mark tone-teal"><i :class="getActivityIcon(activity.tipo)"></i></span><span class="activity-copy"><strong>{{ activity.descripcion }}</strong><small>{{ activity.usuario || 'Sistema' }} · {{ formatTimeAgo(activity.fecha) }}</small></span><span class="activity-amount">{{ getActivityTypeName(activity.tipo) }}</span></article></div>
+        <div v-else class="dashboard-empty compact"><i class="fas fa-clock-rotate-left"></i><strong>{{ dashboardErrors.activities ? 'No se pudo cargar la actividad' : 'Sin actividad registrada' }}</strong><span>{{ dashboardErrors.activities || 'Las acciones recientes aparecerán aquí.' }}</span></div>
       </section>
     </div>
 
@@ -201,7 +116,8 @@
 <script>
 import api from '@/services/api';
 import realTimeService from '@/services/realTimeService';
-import { Pie, Bar } from 'vue-chartjs';
+import defaultProductImage from '@/assets/images/default-product.png';
+import { Bar, Doughnut } from 'vue-chartjs';
 import {
   Chart as ChartJS,
   Title,
@@ -226,27 +142,38 @@ ChartJS.register(
 
 export default {
   name: 'Dashboard',
-  components: { Pie, Bar },
+  components: { Bar, Doughnut },
   data() {
     return {
       // Estado de carga
-      loading: false,
+      loading: true,
+      isRefreshing: false,
+      hasLoadedDashboard: false,
       // Estado de tiempo real
       realTimeConnected: false,
       realTimeStatus: 'disconnected',
       realTimeType: null,
       lastUpdate: null,
+      realtimeRefreshTimer: null,
       // Datos existentes
       resumenVentas: { hoy: 0, mes: 0 },
       resumenUsuarios: { activos: 0 },
+      inventoryProducts: [],
       metodosPago: [],
       ventasPorDia: [],
       ventasPorDiaError: null, // Para rastrear errores específicos de ventas por día
+      summaryError: '',
+      inventoryError: '',
+      dashboardErrors: { products: '', insights: '', activities: '' },
       // Nuevos datos
       topProducts: [],
+      topSellers: [],
+      restockRecommendations: [],
+      historyMonths: 36,
+      upcomingMonths: [],
       recentActivities: [],
       // Imagen por defecto
-      defaultProductImg: '/src/assets/images/default-product.png',
+      defaultProductImg: defaultProductImage,
       // Notificaciones
       notification: {
         show: false,
@@ -254,43 +181,37 @@ export default {
         type: 'success',
         icon: 'fas fa-check-circle'
       },
+      notificationTimer: null,
       // Opciones de gráficos mejoradas
-      pieOptions: {
+      doughnutOptions: {
         responsive: true,
         maintainAspectRatio: false,
+        cutout: '74%',
+        animation: { duration: 650 },
         plugins: {
-          legend: {
-            display: true,
-            position: 'bottom',
-            labels: {
-              color: '#374151',
-              font: { size: 12, weight: '600' },
-              padding: 15,
-              usePointStyle: true,
-              pointStyle: 'circle'
-            }
-          },
+          legend: { display: false },
           tooltip: {
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            titleColor: '#1f2937',
-            bodyColor: '#374151',
-            borderColor: '#667eea',
+            backgroundColor: '#102331',
+            titleColor: '#f5fbff',
+            bodyColor: '#d0e0e8',
+            borderColor: '#355465',
             borderWidth: 1,
-            cornerRadius: 12,
+            cornerRadius: 10,
             displayColors: true,
             callbacks: {
-              label: function(context) {
-                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                const percentage = ((context.parsed * 100) / total).toFixed(1);
-                return `${context.label}: ${percentage}%`;
+              label(context) {
+                const total = context.dataset.data.reduce((sum, value) => sum + Number(value || 0), 0);
+                const percent = total ? (Number(context.parsed || 0) / total * 100).toFixed(1) : '0.0';
+                return ` S/ ${Number(context.parsed || 0).toFixed(2)} · ${percent}%`;
               }
             }
           }
         },
         elements: {
           arc: {
-            borderWidth: 2,
-            borderColor: '#ffffff'
+            borderWidth: 4,
+            borderColor: '#ffffff',
+            hoverOffset: 7
           }
         }
       },
@@ -303,20 +224,13 @@ export default {
         },
         plugins: {
           legend: {
-            display: true,
-            position: 'top',
-            labels: {
-              color: '#374151',
-              font: { size: 12, weight: '600' },
-              padding: 15,
-              usePointStyle: true
-            }
+            display: false
           },
           tooltip: {
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            titleColor: '#1f2937',
-            bodyColor: '#374151',
-            borderColor: '#667eea',
+            backgroundColor: '#102331',
+            titleColor: '#f5fbff',
+            bodyColor: '#d0e0e8',
+            borderColor: '#19a99c',
             borderWidth: 1,
             cornerRadius: 12,
             callbacks: {
@@ -330,12 +244,13 @@ export default {
           x: {
             type: 'category',
             ticks: { 
-              color: '#6b7280', 
-              font: { size: 11, weight: '500' },
-              maxRotation: 45
+              color: '#748b99',
+              font: { size: 10, weight: '600' },
+              maxRotation: 0,
+              autoSkip: false
             },
             grid: { 
-              color: 'rgba(229, 231, 235, 0.5)',
+              color: 'rgba(115, 145, 160, 0.12)',
               drawBorder: false,
               display: false
             }
@@ -344,14 +259,15 @@ export default {
             type: 'linear',
             beginAtZero: true,
             ticks: { 
-              color: '#6b7280', 
-              font: { size: 11, weight: '500' },
+              color: '#748b99',
+              font: { size: 10, weight: '500' },
               callback: function(value) {
-                return 'S/ ' + Number(value).toFixed(0);
+                const amount = Number(value) || 0;
+                return amount >= 1000 ? `S/ ${(amount / 1000).toFixed(1)}k` : `S/ ${amount.toFixed(0)}`;
               }
             },
             grid: { 
-              color: 'rgba(229, 231, 235, 0.5)',
+              color: 'rgba(115, 145, 160, 0.14)',
               drawBorder: false
             }
           }
@@ -371,86 +287,79 @@ export default {
     };
   },
   computed: {
-    chartDataMetodosPago() {
-      if (!this.metodosPago || !Array.isArray(this.metodosPago) || this.metodosPago.length === 0) {
-        return {
-          labels: ['Sin datos'],
-          datasets: [{
-            data: [1],
-            backgroundColor: ['#e5e7eb'],
-            borderWidth: 0,
-            hoverOffset: 0
-          }]
-        };
+    dashboardWarnings() {
+      return [this.summaryError, this.inventoryError].filter(Boolean);
+    },
+    todayLabel() {
+      return new Intl.DateTimeFormat('es-PE', { weekday: 'long', day: 'numeric', month: 'long' })
+        .format(new Date()).toLocaleUpperCase('es-PE');
+    },
+    inventoryCount() {
+      return this.inventoryProducts.filter(product => product.activo === undefined || Number(product.activo) !== 0).length;
+    },
+    lowStockCount() {
+      return this.inventoryProducts.filter(product => (product.activo === undefined || Number(product.activo) !== 0) && (Number(product.low_stock) === 1 || product.low_stock === true || Number(product.stock) <= Number(product.stock_min || 0))).length;
+    },
+    weeklySalesSeries() {
+      const now = new Date();
+      const totalsByDate = new Map();
+      for (const sale of this.ventasPorDia || []) {
+        const key = String(sale.fecha || '').slice(0, 10);
+        if (key) totalsByDate.set(key, (totalsByDate.get(key) || 0) + (Number(sale.total) || 0));
       }
-      
-      const labels = this.metodosPago.map(m => m.metodo_pago || 'Otro');
-      const data = this.metodosPago.map(m => Number(m.total) || 0);
-      
+      return Array.from({ length: 7 }, (_, index) => {
+        const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6 + index);
+        const key = [day.getFullYear(), String(day.getMonth() + 1).padStart(2, '0'), String(day.getDate()).padStart(2, '0')].join('-');
+        return { key, label: new Intl.DateTimeFormat('es-PE', { weekday: 'short' }).format(day).replace('.', ''), total: totalsByDate.get(key) || 0 };
+      });
+    },
+    weeklySalesTotal() {
+      return this.weeklySalesSeries.reduce((total, day) => total + day.total, 0);
+    },
+    paymentStats() {
+      const palette = ['#15a99b', '#6485f3', '#b47ae6', '#f0a64c', '#4bb8d6', '#e27791'];
+      const labels = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', yape: 'Yape', plin: 'Plin' };
+      const methods = (this.metodosPago || [])
+        .map((method, index) => ({
+          key: String(method.metodo_pago || 'otro').toLowerCase(),
+          label: labels[String(method.metodo_pago || '').toLowerCase()] || method.metodo_pago || 'Otro',
+          total: Number(method.total) || 0,
+          color: palette[index % palette.length]
+        }))
+        .filter(method => method.total > 0)
+        .sort((a, b) => b.total - a.total);
+      const total = methods.reduce((sum, method) => sum + method.total, 0);
+      return methods.map(method => ({ ...method, percent: total ? Number((method.total / total * 100).toFixed(1)) : 0 }));
+    },
+    paymentTotal() {
+      return this.paymentStats.reduce((total, method) => total + method.total, 0);
+    },
+    chartDataMetodosPago() {
       return {
-        labels: labels,
+        labels: this.paymentStats.map(method => method.label),
         datasets: [{
-          data: data,
-          backgroundColor: [
-            '#667eea',
-            '#764ba2', 
-            '#f093fb',
-            '#f5576c',
-            '#4facfe',
-            '#00f2fe',
-            '#43e97b'
-          ],
+          data: this.paymentStats.map(method => method.total),
+          backgroundColor: this.paymentStats.map(method => method.color),
           borderWidth: 0,
-          hoverOffset: 8
+          hoverOffset: 6
         }]
       };
     },
     chartDataVentasPorDia() {
-      console.log('🎨 Generando gráfico de barras con datos:', this.ventasPorDia);
-      
-      if (!this.ventasPorDia || !Array.isArray(this.ventasPorDia) || this.ventasPorDia.length === 0) {
-        console.warn('⚠️ No hay datos para el gráfico de barras');
-        return {
-          labels: [],
-          datasets: [{
-            label: 'Total Ventas',
-            data: [],
-            backgroundColor: '#667eea',
-            borderColor: '#667eea',
-            borderWidth: 0,
-            borderRadius: 8,
-            borderSkipped: false,
-          }]
-        };
-      }
-      
-      const labels = this.ventasPorDia.map(v => {
-        return v.dia || v.day || v.fecha || 'Día';
-      });
-      
-      const data = this.ventasPorDia.map(v => {
-        const total = Number(v.total) || 0;
-        return total;
-      });
-      
-      console.log('� Datos del gráfico - Labels:', labels);
-      console.log('📊 Datos del gráfico - Valores:', data);
-      console.log('📊 Muestra de datos originales:', this.ventasPorDia.slice(0, 2));
-      
       return {
-        labels: labels,
+        labels: this.weeklySalesSeries.map(day => day.label),
         datasets: [{
-          label: 'Total Ventas (S/)',
-          data: data,
-          backgroundColor: '#667eea',
-          borderColor: '#5a67d8',
-          borderWidth: 1,
-          borderRadius: {
-            topLeft: 8,
-            topRight: 8,
-            bottomLeft: 0,
-            bottomRight: 0
+          label: 'Ingresos (S/)',
+          data: this.weeklySalesSeries.map(day => day.total),
+          backgroundColor: context => {
+            const values = context.dataset.data || [];
+            const peak = Math.max(0, ...values);
+            return Number(context.raw) === peak ? '#647ff0' : '#16aa9c';
           },
+          borderRadius: 8,
+          barPercentage: 0.58,
+          categoryPercentage: 0.72,
+          maxBarThickness: 48,
           borderSkipped: false,
         }]
       };
@@ -469,24 +378,18 @@ export default {
   async beforeUnmount() {
     // Limpiar listeners y conexiones del tiempo real
     this.cleanupRealTime();
+    clearTimeout(this.notificationTimer);
   },
   methods: {
     // ======= MÉTODOS DE TIEMPO REAL =======
     async initializeRealTime() {
       try {
-        console.log('🚀 Inicializando tiempo real en Dashboard...');
-        
         // Configurar listeners antes de inicializar
-        realTimeService.addListener('dashboard-sales', this.handleSalesUpdate);
-        realTimeService.addListener('dashboard-activities', this.handleActivitiesUpdate);
-        realTimeService.addListener('dashboard-products', this.handleProductsUpdate);
+        realTimeService.addListener('data_changed', this.handleRealtimeChange);
         realTimeService.addListener('connection', this.handleConnectionStatus);
         
         // Inicializar el servicio
         await realTimeService.initialize();
-        
-        console.log('✅ Tiempo real inicializado correctamente');
-        this.showNotification('Sistema de tiempo real activado', 'success', 'fas fa-broadcast-tower');
         
       } catch (error) {
         console.warn('⚠️ Error inicializando tiempo real:', error);
@@ -495,33 +398,33 @@ export default {
     },
     
     cleanupRealTime() {
-      console.log('🧹 Limpiando conexiones de tiempo real...');
-      realTimeService.removeListener('dashboard-sales', this.handleSalesUpdate);
-      realTimeService.removeListener('dashboard-activities', this.handleActivitiesUpdate);
-      realTimeService.removeListener('dashboard-products', this.handleProductsUpdate);
+      realTimeService.removeListener('data_changed', this.handleRealtimeChange);
       realTimeService.removeListener('connection', this.handleConnectionStatus);
-      realTimeService.disconnect();
+      clearTimeout(this.realtimeRefreshTimer);
     },
     
     handleConnectionStatus(data) {
-      console.log('🔌 Estado de conexión actualizado:', data);
       this.realTimeStatus = data.status;
       this.realTimeType = data.type;
       this.realTimeConnected = data.status === 'connected';
       
-      if (data.status === 'connected') {
-        this.showNotification(
-          `Tiempo real conectado via ${data.type}`, 
-          'success', 
-          'fas fa-plug'
-        );
-      } else if (data.status === 'error') {
+      if (data.status === 'error') {
         console.warn('⚠️ Error de conexión tiempo real:', data.error);
+      }
+    },
+
+    handleRealtimeChange(change = {}) {
+      const entities = change.entities || [];
+      if (!entities.length || ['sales', 'inventory', 'products', 'activities', 'users'].some(entity => entities.includes(entity))) {
+        clearTimeout(this.realtimeRefreshTimer);
+        this.realtimeRefreshTimer = setTimeout(() => {
+          this.lastUpdate = new Date();
+          this.loadAllData({ notify: false });
+        }, 180);
       }
     },
     
     handleSalesUpdate(data) {
-      console.log('💰 Actualización de ventas recibida:', data);
       this.lastUpdate = new Date();
       
       // Actualizar datos según el tipo de actualización
@@ -538,7 +441,6 @@ export default {
     },
     
     handleActivitiesUpdate(data) {
-      console.log('📋 Actualización de actividades recibida:', data);
       this.lastUpdate = new Date();
       
       if (data.data && Array.isArray(data.data)) {
@@ -555,17 +457,12 @@ export default {
     },
     
     handleProductsUpdate(data) {
-      console.log('📦 Actualización de productos recibida:', data);
       this.lastUpdate = new Date();
       
       if (data.data && Array.isArray(data.data)) {
         this.topProducts = data.data.slice(0, 5).map(product => ({
           ...product,
-          image: product.image 
-            ? (product.image.startsWith('/uploads/') 
-                ? `${import.meta.env.VITE_API_URL}${product.image}` 
-                : product.image)
-            : this.defaultProductImg
+          image: this.resolveProductImage(product.image)
         }));
       }
       
@@ -573,80 +470,81 @@ export default {
     },
 
     // ======= MÉTODOS DE CARGA DE DATOS =======
-    async loadAllData() {
-      this.loading = true;
+    async loadAllData({ notify = true } = {}) {
+      const initialLoad = !this.hasLoadedDashboard;
+      this.isRefreshing = true;
+      this.loading = initialLoad;
       try {
         await Promise.all([
           this.loadSummaryData(),
+          this.loadInventorySummary(),
           this.loadTopProducts(),
+          this.loadDashboardInsights(),
           this.loadRecentActivities()
         ]);
-        this.showNotification('Dashboard actualizado correctamente', 'success');
+        this.lastUpdate = new Date();
+        this.hasLoadedDashboard = true;
+        if (notify) this.showNotification('Dashboard actualizado correctamente', 'success');
       } catch (error) {
         console.error('Error cargando datos del dashboard:', error);
         this.showNotification('Error al cargar datos del dashboard', 'error', 'fas fa-exclamation-triangle');
       } finally {
         this.loading = false;
+        this.isRefreshing = false;
       }
     },
 
     async loadSummaryData() {
+      const [summaryResult, usersResult, paymentsResult, dailyResult] = await Promise.allSettled([
+        api.get('/sales/resumen'),
+        api.get('/users/stats/activos'),
+        api.get('/sales/metodos-pago'),
+        api.get('/sales/ventas-por-dia')
+      ]);
+      const summaryFailures = [];
+
+      if (summaryResult.status === 'fulfilled') {
+        this.resumenVentas = summaryResult.value.data || { hoy: 0, mes: 0 };
+      } else {
+        console.error('Error cargando métricas de ventas:', summaryResult.reason);
+        summaryFailures.push('ventas');
+      }
+
+      if (usersResult.status === 'fulfilled') {
+        this.resumenUsuarios = usersResult.value.data || { activos: 0 };
+      } else {
+        console.error('Error cargando usuarios activos:', usersResult.reason);
+        summaryFailures.push('usuarios');
+      }
+
+      if (paymentsResult.status === 'fulfilled') {
+        this.metodosPago = Array.isArray(paymentsResult.value.data) ? paymentsResult.value.data : [];
+      } else {
+        console.error('Error cargando medios de pago:', paymentsResult.reason);
+        summaryFailures.push('medios de pago');
+      }
+      this.summaryError = summaryFailures.length
+        ? `No se pudieron actualizar: ${summaryFailures.join(', ')}.`
+        : '';
+
+      if (dailyResult.status === 'fulfilled') {
+        this.ventasPorDia = this.processVentasPorDia(dailyResult.value.data);
+        this.ventasPorDiaError = null;
+      } else {
+        console.error('Error cargando ventas por día:', dailyResult.reason);
+        this.ventasPorDiaError = 'No fue posible consultar los ingresos diarios. Intenta actualizar el panel.';
+      }
+    },
+
+    async loadInventorySummary() {
       try {
-        console.log('📡 Cargando datos de resumen del dashboard...');
-        
-        // Cargar datos básicos que generalmente funcionan
-        const [resumen, usuarios, metodos] = await Promise.all([
-          api.get('/sales/resumen'),
-          api.get('/users/stats/activos'),
-          api.get('/sales/metodos-pago')
-        ]);
-        
-        // Asignar datos básicos
-        this.resumenVentas = resumen.data || { hoy: 0, mes: 0 };
-        this.resumenUsuarios = usuarios.data || { activos: 0 };
-        
-        // Procesar métodos de pago
-        if (metodos.data && Array.isArray(metodos.data)) {
-          this.metodosPago = metodos.data;
-          console.log('✅ Métodos de pago cargados:', this.metodosPago.length);
-        } else {
-          console.warn('⚠️ Métodos de pago no válidos:', metodos.data);
-          this.metodosPago = [];
-        }
-        
-        // Intentar cargar ventas por día por separado para manejar errores específicos
-        try {
-          console.log('🔍 Cargando ventas por día...');
-          const ventasDia = await api.get('/sales/ventas-por-dia');
-          this.ventasPorDia = this.processVentasPorDia(ventasDia.data);
-          this.ventasPorDiaError = null; // Limpiar error previo
-          console.log('✅ Ventas por día cargadas:', this.ventasPorDia.length);
-        } catch (ventasError) {
-          console.warn('⚠️ Error específico en ventas por día:', ventasError);
-          this.ventasPorDia = [];
-          
-          // Detectar tipo específico de error
-          if (ventasError.response?.data?.error?.includes('sql_mode=only_full_group_by')) {
-            this.ventasPorDiaError = 'Error de configuración del servidor (SQL)';
-            console.error('🔧 Error de SQL detectado: sql_mode=only_full_group_by');
-          } else if (ventasError.response?.status === 500) {
-            this.ventasPorDiaError = 'Error interno del servidor en ventas por día';
-          } else {
-            this.ventasPorDiaError = `Error: ${ventasError.message}`;
-          }
-        }
-        
+        const response = await api.get('/products');
+        const products = Array.isArray(response.data) ? response.data : response.data?.products;
+        this.inventoryProducts = Array.isArray(products) ? products : [];
+        this.inventoryError = '';
       } catch (error) {
-        console.error('❌ Error cargando datos de resumen:', error);
-        
-        // Asignar valores por defecto en caso de error general
-        this.resumenVentas = { hoy: 0, mes: 0 };
-        this.resumenUsuarios = { activos: 0 };
-        this.metodosPago = [];
-        this.ventasPorDia = [];
-        this.ventasPorDiaError = 'Error general del servidor';
-        
-        this.showNotification('Error cargando datos del dashboard', 'error');
+        console.error('Error cargando el inventario del dashboard:', error);
+        this.inventoryError = 'No se pudo actualizar el resumen de inventario.';
       }
     },
 
@@ -671,19 +569,49 @@ export default {
         if (products.length > 0) {
           this.topProducts = products.map(product => ({
             ...product,
-            image: product.image 
-              ? (product.image.startsWith('/uploads/') 
-                  ? `${import.meta.env.VITE_API_URL}${product.image}` 
-                  : product.image)
-              : this.defaultProductImg
+            image: this.resolveProductImage(product.image)
           }));
         } else {
           this.topProducts = [];
         }
+        this.dashboardErrors.products = '';
       } catch (error) {
         console.error('Error cargando productos más vendidos:', error);
-        this.topProducts = [];
+        this.dashboardErrors.products = 'Intenta actualizar para volver a consultar los productos vendidos.';
       }
+    },
+
+    async loadDashboardInsights() {
+      try {
+        const response = await api.get('/sales/dashboard-insights');
+        const data = response.data || {};
+        this.topSellers = Array.isArray(data.topSellers) ? data.topSellers : [];
+        this.restockRecommendations = Array.isArray(data.restockRecommendations)
+          ? data.restockRecommendations
+          : [];
+        this.historyMonths = Number(data.historyMonths) || 36;
+        this.upcomingMonths = Array.isArray(data.upcomingMonths) ? data.upcomingMonths : [];
+        this.dashboardErrors.insights = '';
+      } catch (error) {
+        console.error('Error cargando indicadores estacionales:', error);
+        this.dashboardErrors.insights = 'Intenta actualizar para volver a consultar los indicadores.';
+      }
+    },
+
+    getInitials(name = '') {
+      return String(name).trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('') || 'U';
+    },
+
+    getRoleDisplayName(role) {
+      const roles = { admin: 'Administrador', supervisor: 'Supervisor', cajero: 'Cajero', almacenero: 'Almacenero' };
+      return roles[role] || role || 'Usuario';
+    },
+
+    resolveProductImage(image) {
+      if (!image) return this.defaultProductImg;
+      const imagePath = String(image);
+      if (imagePath.startsWith('/uploads/')) return `${import.meta.env.VITE_API_URL || ''}${imagePath}`;
+      return imagePath;
     },
 
     async loadRecentActivities() {
@@ -707,38 +635,27 @@ export default {
         }
 
         this.recentActivities = activities;
+        this.dashboardErrors.activities = '';
       } catch (error) {
         console.error('Error cargando actividades recientes:', error);
-        this.recentActivities = [];
+        this.dashboardErrors.activities = 'Intenta actualizar para volver a consultar la actividad.';
       }
     },
 
     async refreshData() {
-      console.log('🔄 Actualizando datos del dashboard...');
-      
-      // Si el tiempo real está conectado, solicitar actualización via tiempo real
-      if (this.realTimeConnected) {
-        try {
-          realTimeService.requestUpdate('dashboard');
-          this.showNotification('Solicitando actualización en tiempo real...', 'info', 'fas fa-broadcast-tower');
-        } catch (error) {
-          console.warn('⚠️ Error solicitando actualización tiempo real, usando método manual:', error);
-          await this.loadAllData();
-        }
-      } else {
-        // Si no hay tiempo real, cargar datos manualmente
-        await this.loadAllData();
-      }
+      await this.loadAllData();
     },
 
     formatCurrency(amount) {
-      return parseFloat(amount || 0).toFixed(2);
+      const value = Number(amount);
+      return (Number.isFinite(value) ? value : 0).toFixed(2);
     },
 
     formatTimeAgo(dateString) {
       const date = new Date(dateString);
+      if (Number.isNaN(date.getTime())) return 'Fecha no disponible';
       const now = new Date();
-      const diffInSeconds = Math.floor((now - date) / 1000);
+      const diffInSeconds = Math.max(0, Math.floor((now - date) / 1000));
 
       if (diffInSeconds < 60) {
         return 'Hace unos momentos';
@@ -783,6 +700,7 @@ export default {
     },
 
     showNotification(message, type = 'success', icon = 'fas fa-check-circle') {
+      clearTimeout(this.notificationTimer);
       this.notification = {
         show: true,
         message,
@@ -790,89 +708,29 @@ export default {
         icon
       };
       
-      setTimeout(() => {
+      this.notificationTimer = setTimeout(() => {
         this.notification.show = false;
       }, 4000);
     },
 
-    // Método de debugging para ventas por día
-    async debugVentasPorDia() {
-      console.log('🔍 === DEBUGGING VENTAS POR DÍA ===');
-      
-      try {
-        console.log('📡 Llamando a /sales/ventas-por-dia...');
-        const response = await api.get('/sales/ventas-por-dia');
-        
-        console.log('✅ Respuesta recibida:');
-        console.log('- Status:', response.status);
-        console.log('- Headers:', response.headers);
-        console.log('- Data completa:', response.data);
-        console.log('- Tipo de data:', typeof response.data);
-        console.log('- Es array?:', Array.isArray(response.data));
-        
-        if (response.data) {
-          console.log('- Propiedades del objeto:', Object.keys(response.data));
-          
-          // Intentar encontrar los datos de ventas
-          const processedData = this.processVentasPorDia(response.data);
-          console.log('- Datos procesados:', processedData);
-          
-          if (processedData.length > 0) {
-            console.log('- Primer elemento:', processedData[0]);
-            console.log('- Estructura del primer elemento:', Object.keys(processedData[0]));
-          } else {
-            console.log('⚠️ No se encontraron datos de ventas procesados');
-          }
-        }
-        
-        this.showNotification('Debugging completado - revisa la consola', 'info');
-        return response.data;
-        
-      } catch (error) {
-        console.error('❌ Error en debugging:', error);
-        console.error('- Mensaje:', error.message);
-        console.error('- Status:', error.response?.status);
-        console.error('- Data del error:', error.response?.data);
-        
-        if (error.response?.status === 500) {
-          console.log('🔍 Error 500 - El backend tiene problemas con este endpoint');
-          this.showNotification('Error 500: Problema en el servidor con ventas-por-dia', 'error');
-        } else if (error.response?.status === 404) {
-          console.log('🔍 Error 404 - El endpoint no existe');
-          this.showNotification('Error 404: Endpoint ventas-por-dia no encontrado', 'warning');
-        } else {
-          this.showNotification(`Error de debugging: ${error.message}`, 'error');
-        }
-        
-        // No relanzar el error para evitar el error no capturado
-        return null;
-      }
-    },
-
     // Método mejorado para procesar ventas por día
     processVentasPorDia(data) {
-      console.log('🔄 Procesando ventas por día:', data);
-      
       if (!data) {
-        console.warn('⚠️ No hay datos para procesar');
         return [];
       }
       
       // Caso 1: Es directamente un array
       if (Array.isArray(data)) {
-        console.log('✅ Datos son un array directo:', data.length, 'elementos');
         return data;
       }
       
       // Caso 2: Tiene propiedad 'data' que es un array
       if (data.data && Array.isArray(data.data)) {
-        console.log('✅ Datos encontrados en propiedad "data":', data.data.length, 'elementos');
         return data.data;
       }
       
       // Caso 3: Tiene propiedad 'ventas' que es un array
       if (data.ventas && Array.isArray(data.ventas)) {
-        console.log('✅ Datos encontrados en propiedad "ventas":', data.ventas.length, 'elementos');
         return data.ventas;
       }
       
@@ -880,72 +738,18 @@ export default {
       const possibleKeys = ['results', 'items', 'sales', 'dailySales', 'ventasDiarias'];
       for (const key of possibleKeys) {
         if (data[key] && Array.isArray(data[key])) {
-          console.log(`✅ Datos encontrados en propiedad "${key}":`, data[key].length, 'elementos');
           return data[key];
         }
       }
       
       // Caso 5: Es un objeto con datos de un solo día
       if (typeof data === 'object' && data.fecha && data.total !== undefined) {
-        console.log('✅ Datos de un solo día detectados, convirtiendo a array');
         return [data];
       }
       
-      console.warn('⚠️ Estructura inesperada en ventas por día:', data);
-      console.warn('📋 Propiedades disponibles:', Object.keys(data));
       return [];
     },
 
-    // Método para probar conectividad general del backend
-    async testBackendConnectivity() {
-      console.log('🧪 === PROBANDO CONECTIVIDAD DEL BACKEND ===');
-      
-      const endpoints = [
-        { name: 'Resumen', url: '/sales/resumen' },
-        { name: 'Usuarios', url: '/users/stats/activos' },
-        { name: 'Métodos de pago', url: '/sales/metodos-pago' },
-        { name: 'Ventas por día', url: '/sales/ventas-por-dia' },
-        { name: 'Top productos', url: '/sales/top-products?limit=5' }
-      ];
-      
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`📡 Probando ${endpoint.name}: ${endpoint.url}`);
-          const response = await api.get(endpoint.url);
-          console.log(`✅ ${endpoint.name}: OK (${response.status})`);
-          console.log(`   Data:`, response.data);
-        } catch (error) {
-          console.error(`❌ ${endpoint.name}: ERROR (${error.response?.status || 'No response'})`);
-          console.error(`   Error:`, error.message);
-          if (error.response?.data) {
-            console.error(`   Server Error:`, error.response.data);
-          }
-        }
-      }
-      
-      this.showNotification('Prueba de conectividad completada - revisa la consola', 'info');
-    },
-
-    // Método para verificar configuración del tiempo real
-    checkRealTimeConfig() {
-      console.log('🔧 === CONFIGURACIÓN DE TIEMPO REAL ===');
-      
-      const config = {
-        enabled: import.meta.env.VITE_REALTIME_ENABLED,
-        websockets: import.meta.env.VITE_ENABLE_WEBSOCKETS,
-        polling: import.meta.env.VITE_POLLING_ENABLED,
-        pollingInterval: import.meta.env.VITE_POLLING_INTERVAL,
-        apiUrl: import.meta.env.VITE_API_URL,
-        wsUrl: import.meta.env.VITE_WS_URL,
-        dev: import.meta.env.DEV
-      };
-      
-      console.log('📊 Variables de entorno:', config);
-      console.log('🔌 Estado actual del servicio:', realTimeService.getStatus());
-      console.log('📈 Estadísticas de errores:', realTimeService.getErrorStats());
-      
-      this.showNotification('Configuración mostrada en consola', 'info');
-    },
   }
 };
 </script>
@@ -1724,5 +1528,139 @@ export default {
   font-size: 1rem !important;
   color: #dc2626 !important;
   margin: 0 !important;
+}
+
+/* Dashboard real con la misma composición que la vista de demostración. */
+.dashboard-page {
+  min-height: calc(100vh - 110px);
+  max-height: none;
+  overflow: visible;
+  padding: 0 !important;
+  background: transparent !important;
+  color: var(--app-ink, #172b3b);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dashboard-page-heading { min-height: 62px; }
+.dashboard-page .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.dashboard-page .eyebrow { margin: 0 0 5px; color: #148a83; font-size: .62rem; font-weight: 760; letter-spacing: .12em; }
+.dashboard-page .page-heading h1 { margin: 0; color: var(--app-ink, #152b3a); font-size: 1.55rem; font-weight: 730; letter-spacing: -.05em; line-height: 1.2; }
+.dashboard-page .page-heading p:not(.eyebrow) { margin: 6px 0 0; color: var(--app-muted, #778897); font-size: .76rem; }
+.dashboard-heading-actions { display: flex; align-items: center; gap: 11px; }
+.connection-pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--app-border, #e5ecee); border-radius: 999px; background: var(--app-surface, #fff); color: var(--app-muted, #738496); font-size: .66rem; font-weight: 650; white-space: nowrap; }
+.connection-pill i { width: 7px; height: 7px; border-radius: 50%; background: #a8b6bd; }
+.connection-pill.connected i { background: #3fc8a9; box-shadow: 0 0 0 3px rgba(63, 200, 169, .12); }
+.connection-pill.connecting i { background: #e3a84c; }
+.dashboard-page .primary-button { display: inline-flex; min-height: 39px; align-items: center; justify-content: center; gap: 8px; padding: 0 13px; border: 1px solid #078f89; border-radius: 9px; background: #078f89; color: #fff; font-size: .72rem; font-weight: 690; text-decoration: none; }
+.dashboard-loading { display: flex; min-height: 260px; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--app-muted, #738496); font-size: .76rem; }
+.dashboard-page .dashboard-content { display: grid; gap: 17px; }
+.dashboard-page .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.dashboard-page .metric-card { min-width: 0; padding: 15px 16px; border: 1px solid var(--app-border, #e5ecee); border-radius: 13px; background: var(--app-surface, #fff); box-shadow: 0 4px 14px rgba(22, 50, 67, .025); }
+.dashboard-page .metric-top { display: flex; align-items: center; justify-content: space-between; color: var(--app-muted, #718291); font-size: .69rem; }
+.dashboard-page .metric-icon { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 9px; font-size: .75rem; }
+.dashboard-page .metric-icon.teal { background: #e8f6f3; color: #128e84; }
+.dashboard-page .metric-icon.blue { background: #edf3fc; color: #5a7fbd; }
+.dashboard-page .metric-icon.violet { background: #f3effb; color: #8464b6; }
+.dashboard-page .metric-icon.amber { background: #fff5e8; color: #ce9140; }
+.dashboard-page .metric-card > strong { display: block; margin-top: 8px; color: var(--app-ink, #172e3d); font-size: 1.37rem; font-weight: 730; letter-spacing: -.045em; }
+.dashboard-page .metric-foot { display: block; margin-top: 8px; color: var(--app-muted, #8896a2); font-size: .67rem; }
+.dashboard-page .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(250px, .9fr); gap: 14px; }
+.dashboard-page .demo-panel { min-width: 0; padding: 17px; border: 1px solid var(--app-border, #e5ecee); border-radius: 14px; background: var(--app-surface, #fff); box-shadow: 0 5px 17px rgba(22, 50, 67, .025); }
+.dashboard-page .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dashboard-page .panel-heading h2 { margin: 0; color: var(--app-ink, #1a3040); font-size: .84rem; font-weight: 710; letter-spacing: -.02em; }
+.dashboard-page .panel-heading p { margin: 3px 0 0; color: var(--app-muted, #8795a0); font-size: .68rem; }
+.dashboard-page .soft-select { display: flex; align-items: center; gap: 8px; min-height: 31px; padding: 0 9px; border: 1px solid var(--app-border, #e5ecee); border-radius: 8px; background: var(--app-surface, #fff); color: var(--app-muted, #687b89); font-size: .65rem; }
+.dashboard-page .real-chart-wrap { height: 228px; margin-top: 12px; }
+.dashboard-page .real-chart-wrap canvas { max-height: 100%; }
+.dashboard-empty { display: flex; min-height: 210px; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 18px; border: 1px dashed var(--app-border, #e5ecee); border-radius: 11px; background: var(--app-surface-soft, #f7f9fa); color: var(--app-muted, #8795a0); text-align: center; }
+.dashboard-empty > i { margin-bottom: 4px; color: #8fb8b4; font-size: 1.2rem; }
+.dashboard-empty strong { color: var(--app-ink, #435866); font-size: .75rem; }
+.dashboard-empty span { max-width: 360px; font-size: .67rem; }
+.dashboard-empty.compact { min-height: 128px; }
+.dashboard-page .seller-feature { display: flex; align-items: center; gap: 10px; margin-top: 21px; }
+.dashboard-page .seller-crown { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 8px; background: #fff4df; color: #d29432; font-size: .7rem; }
+.dashboard-page .seller-photo { display: grid; width: 39px; height: 39px; flex: 0 0 39px; place-items: center; border: 1px solid #d9ebe7; border-radius: 50%; background: #eaf6f3; color: #167c75; font-size: .7rem; font-weight: 750; }
+.dashboard-page .seller-person { display: grid; gap: 3px; }
+.dashboard-page .seller-person strong { color: var(--app-ink, #304654); font-size: .75rem; }
+.dashboard-page .seller-person span { color: var(--app-muted, #8b99a2); font-size: .64rem; }
+.dashboard-page .seller-total { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 19px; padding-bottom: 14px; border-bottom: 1px solid var(--app-border, #edf0f0); }
+.dashboard-page .seller-total strong { color: var(--app-ink, #193b48); font-size: 1.3rem; letter-spacing: -.04em; }
+.dashboard-page .seller-total span { color: #168d78; font-size: .66rem; font-weight: 650; }
+.dashboard-page .seller-secondary-list { display: grid; gap: 0; }
+.dashboard-page .seller-secondary-list > div { display: flex; min-height: 35px; align-items: center; gap: 8px; border-bottom: 1px solid var(--app-border, #eff2f3); }
+.dashboard-page .seller-secondary-list > div > span { color: #9aa8af; font-size: .62rem; }
+.dashboard-page .seller-secondary-list strong { flex: 1; color: var(--app-ink, #4d626e); font-size: .66rem; }
+.dashboard-page .seller-secondary-list b { color: var(--app-ink, #526b77); font-size: .65rem; }
+.dashboard-page .dashboard-list-panel { padding: 17px; }
+.dashboard-page .text-button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #177c79; font-size: .66rem; font-weight: 680; text-decoration: none; }
+.dashboard-page .best-sellers { margin-top: 10px; }
+.dashboard-page .best-seller-row { display: grid; min-height: 58px; grid-template-columns: 26px 37px minmax(130px, 1fr) 78px minmax(80px, .55fr) 90px; align-items: center; gap: 10px; border-top: 1px solid var(--app-border, #eff2f3); }
+.dashboard-page .rank-pill { color: #91a0a7; font-size: .66rem; font-weight: 700; }
+.dashboard-page .product-thumb { display: grid; width: 36px; height: 36px; overflow: hidden; place-items: center; border: 1px solid var(--app-border, #e9eeee); border-radius: 9px; background: var(--app-surface-soft, #f5f8f8); }
+.dashboard-page .product-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.dashboard-page .best-product-name { display: grid; gap: 3px; min-width: 0; }
+.dashboard-page .best-product-name strong { overflow: hidden; color: var(--app-ink, #344c59); font-size: .69rem; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-page .best-product-name small { color: var(--app-muted, #91a0a7); font-size: .61rem; }
+.dashboard-page .sold-count { color: #3b5966; font-size: .69rem; font-weight: 700; text-align: right; }
+.dashboard-page .sold-count small { color: var(--app-muted, #8b99a2); font-size: .6rem; font-weight: 500; }
+.dashboard-page .sold-bar { height: 5px; overflow: hidden; border-radius: 99px; background: #edf2f2; }
+.dashboard-page .sold-bar i { display: block; height: 100%; border-radius: inherit; background: #36aa9c; }
+.dashboard-page .sold-income { color: #59717c; font-size: .67rem; text-align: right; }
+.dashboard-page .heading-accent { color: #138f86; }
+.dashboard-page .forecast-badge { padding: 5px 9px; border: 1px solid #dcece8; border-radius: 7px; background: #eff8f5; color: #25877d; font-size: .62rem; font-weight: 680; }
+.dashboard-page .restock-list { display: grid; gap: 8px; margin-top: 13px; }
+.dashboard-page .restock-row { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--app-border, #edf0f0); border-radius: 11px; background: var(--app-surface-soft, #fbfcfc); }
+.dashboard-page .restock-row .product-thumb { flex: 0 0 36px; }
+.dashboard-page .restock-name { display: grid; flex: 1; gap: 4px; min-width: 120px; }
+.dashboard-page .restock-name strong { color: var(--app-ink, #304754); font-size: .72rem; }
+.dashboard-page .restock-name small { color: var(--app-muted, #84939e); font-size: .63rem; }
+.dashboard-page .stock-current,.dashboard-page .stock-demand,.dashboard-page .buy-suggest { display: grid; gap: 3px; min-width: 72px; }
+.dashboard-page .stock-current small,.dashboard-page .stock-demand small,.dashboard-page .buy-suggest small { color: var(--app-muted, #8796a1); font-size: .6rem; }
+.dashboard-page .stock-current b,.dashboard-page .stock-demand b { color: var(--app-ink, #3b5360); font-size: .69rem; }
+.dashboard-page .buy-suggest { padding-left: 12px; border-left: 1px solid var(--app-border, #e6eceb); }
+.dashboard-page .buy-suggest b { color: #138679; font-size: .7rem; }
+.dashboard-page .icon-button { display: grid; width: 29px; height: 29px; flex: 0 0 29px; place-items: center; border: 1px solid var(--app-border, #e5edeb); border-radius: 8px; background: var(--app-surface, #fff); color: #59727c; font-size: .67rem; text-decoration: none; }
+.dashboard-page .restock-footnote { display: flex; align-items: center; gap: 7px; margin: 10px 2px 0; color: var(--app-muted, #92a0a8); font-size: .61rem; }
+.dashboard-page .activity-list { margin-top: 9px; }
+.dashboard-page .activity-row { display: flex; align-items: center; gap: 10px; min-height: 51px; border-top: 1px solid var(--app-border, #eff2f3); }
+.dashboard-page .activity-mark { display: grid; width: 29px; height: 29px; flex: 0 0 29px; place-items: center; border-radius: 9px; background: #e8f6f2; color: #168a7f; font-size: .68rem; }
+.dashboard-page .activity-copy { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.dashboard-page .activity-copy strong { overflow: hidden; color: var(--app-ink, #3a515f); font-size: .67rem; font-weight: 640; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-page .activity-copy small { color: var(--app-muted, #8d9aa3); font-size: .61rem; }
+.dashboard-page .activity-amount { color: #637984; font-size: .66rem; font-weight: 650; white-space: nowrap; }
+
+@media (max-width: 1120px) {
+  .dashboard-page .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-page .dashboard-grid { grid-template-columns: minmax(0, 1.6fr) minmax(220px, .9fr); }
+  .dashboard-page .best-seller-row { grid-template-columns: 23px 36px minmax(110px, 1fr) 60px 80px; }
+  .dashboard-page .sold-bar { display: none; }
+}
+
+@media (max-width: 760px) {
+  .dashboard-page .page-heading { align-items: flex-start; }
+  .dashboard-page .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-heading-actions { align-items: flex-end; flex-direction: column; }
+  .dashboard-page .best-seller-row { grid-template-columns: 20px 34px minmax(100px, 1fr) 65px; gap: 7px; }
+  .dashboard-page .sold-income { display: none; }
+  .dashboard-page .restock-row { flex-wrap: wrap; }
+  .dashboard-page .restock-name { flex-basis: calc(100% - 60px); }
+  .dashboard-page .stock-current,.dashboard-page .stock-demand,.dashboard-page .buy-suggest { flex: 1; }
+}
+
+@media (max-width: 480px) {
+  .dashboard-page .page-heading { align-items: stretch; flex-direction: column; }
+  .dashboard-heading-actions { align-items: stretch; flex-direction: row; justify-content: space-between; }
+  .connection-pill { padding: 6px 8px; font-size: .58rem; }
+  .dashboard-page .metric-grid { gap: 8px; }
+  .dashboard-page .metric-card { padding: 12px; }
+  .dashboard-page .metric-card > strong { font-size: 1.15rem; }
+  .dashboard-page .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-page .best-seller-row { grid-template-columns: 18px 31px minmax(85px, 1fr) 55px; gap: 6px; }
+  .dashboard-page .product-thumb { width: 31px; height: 31px; }
+  .dashboard-page .best-product-name strong { font-size: .63rem; }
+  .dashboard-page .sold-count { font-size: .64rem; }
+  .dashboard-page .sold-count small { display: block; }
+  .dashboard-page .demo-panel { padding: 12px; }
+  .dashboard-page .panel-heading h2 { font-size: .79rem; }
 }
 </style>

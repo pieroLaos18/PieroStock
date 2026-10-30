@@ -1,82 +1,47 @@
 <template>
   <div class="dynamic-content users-page">
-    <!-- Cabecera mejorada para Users.vue -->
-    <div class="users-header">
-      <div class="header-content">
-        <div class="header-left">
-          <div class="header-icon">
-            <i class="fas fa-users"></i>
-          </div>
-          <div class="header-text">
-            <h1>Gestión de Usuarios</h1>
-            <p class="header-subtitle">Administración completa de usuarios y roles del sistema</p>
-            <div class="header-stats">
-              <div class="stat-item">
-                <span class="stat-number">{{ users.length }}</span>
-                <span class="stat-label">Total</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ users.filter(u => u.role === 'admin').length }}</span>
-                <span class="stat-label">Admins</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ uniqueRoles.length }}</span>
-                <span class="stat-label">Roles</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="header-actions" v-if="currentUserRole === 'admin'">
-          <button class="btn-new-user" @click="openUserModal()">
-            <i class="fas fa-user-plus"></i>
-            <span>Nuevo Usuario</span>
-          </button>
-        </div>
-      </div>
-      
-      <div class="filters-section">
-        <div class="search-container">
-          <div class="search-wrapper">
-            <i class="fas fa-search search-icon"></i>
-            <input
-              type="text"
-              v-model="searchQuery"
-              placeholder="Buscar usuarios por nombre o email..."
-              class="search-input"
-            />
-            <button v-if="searchQuery" @click="searchQuery = ''" class="clear-search">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-        </div>
-        
-        <div class="filter-container">
-          <div class="filter-wrapper">
-            <i class="fas fa-filter filter-icon"></i>
-            <select v-model="selectedRole" class="role-select">
-              <option value="">Todos los roles</option>
-              <option v-for="role in uniqueRoles" :key="role" :value="role">
-                {{ getRoleDisplayName(role) }}
-              </option>
-            </select>
-          </div>
-        </div>
-      </div>
+    <div class="page-heading">
+      <div><p class="eyebrow">EQUIPO</p><h1>Equipo</h1><p>Administra las cuentas, roles y accesos del negocio.</p></div>
+      <button v-if="currentUserRole === 'admin'" class="primary-button" type="button" @click="openUserModal()"><i class="fas fa-user-plus"></i> Nuevo usuario</button>
     </div>
 
+    <section class="metric-grid compact-metrics">
+      <article class="metric-card"><div class="metric-top"><span>Miembros</span><span class="metric-icon teal"><i class="fas fa-users"></i></span></div><strong>{{ filteredUsers.length }}</strong><small class="metric-foot">Cuentas activas del equipo</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Administradores</span><span class="metric-icon blue"><i class="fas fa-user-shield"></i></span></div><strong>{{ filteredUsers.filter(u => u.role === 'admin').length }}</strong><small class="metric-foot">Con acceso de administración</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Roles</span><span class="metric-icon violet"><i class="fas fa-id-badge"></i></span></div><strong>{{ uniqueRoles.length }}</strong><small class="metric-foot">Perfiles asignados</small></article>
+    </section>
+
+    <div v-if="usersLoadError && users.length" class="users-inline-warning" role="status"><i class="fas fa-triangle-exclamation"></i><span>{{ usersLoadError }} Se muestran los últimos datos cargados.</span></div>
+
+    <section class="demo-panel filters-panel">
+      <div class="table-toolbar users-toolbar">
+        <div class="search-box"><i class="fas fa-search"></i><input type="search" v-model="searchQuery" placeholder="Buscar por nombre o correo" aria-label="Buscar por nombre o correo" /><button v-if="searchQuery" type="button" @click="searchQuery = ''" aria-label="Limpiar búsqueda"><i class="fas fa-times"></i></button></div>
+        <select v-model="selectedRole" class="role-select">
+          <option value="">Todos los roles</option>
+          <option v-for="role in uniqueRoles" :key="role" :value="role">{{ getRoleDisplayName(role) }}</option>
+        </select>
+        <button class="secondary-button" type="button" @click="fetchUsers({ notify: true })" :disabled="isRefreshing"><i class="fas fa-rotate" :class="{ 'fa-spin': isRefreshing }"></i> {{ isRefreshing ? 'Actualizando…' : 'Actualizar' }}</button>
+      </div>
+    </section>
+
     <!-- Loader animado -->
-    <div v-if="loading" class="loader"></div>
+    <div v-if="loading" class="users-loading" role="status">Cargando equipo…</div>
+    <div v-else-if="usersLoadError && !users.length" class="no-users-msg users-error-state" role="alert">
+      <i class="fas fa-triangle-exclamation"></i><p>{{ usersLoadError }}</p>
+      <button class="btn-primary" type="button" @click="fetchUsers"><i class="fas fa-rotate"></i> Reintentar</button>
+    </div>
 
     <!-- Mensaje si no hay usuarios -->
     <div v-else-if="filteredUsersForDisplay.length === 0" class="no-users-msg">
-      <i class="fas fa-users-slash"></i>
-      <p>No hay usuarios para mostrar.</p>
+      <i :class="hasActiveFilters ? 'fas fa-filter-circle-xmark' : 'fas fa-users-slash'"></i>
+      <p>{{ hasActiveFilters ? 'No hay miembros que coincidan con esos filtros.' : 'Aún no hay otros miembros en el equipo.' }}</p>
+      <button v-if="hasActiveFilters" class="btn-secondary" type="button" @click="clearFilters">Limpiar filtros</button>
+      <button v-else-if="currentUserRole === 'admin'" class="btn-primary" type="button" @click="openUserModal()"><i class="fas fa-user-plus"></i> Crear primer usuario</button>
     </div>
 
     <!-- Tabla de usuarios moderna -->
-    <div v-else class="users-table-container">
-      <div class="table-header">
+    <div v-else class="users-table-container demo-panel table-panel">
+      <div class="table-header table-toolbar">
         <h3>Lista de Usuarios</h3>
         <div class="table-summary">
           <span>{{ filteredUsersForDisplay.length }} usuario(s) encontrado(s)</span>
@@ -134,10 +99,10 @@
               </td>
               <td v-if="currentUserRole === 'admin'">
                 <div class="actions-cell">
-                  <button @click="editUser(user)" class="action-btn edit" title="Editar usuario">
+                    <button type="button" @click="editUser(user)" class="action-btn edit" title="Editar usuario" :aria-label="`Editar a ${user.name}`">
                     <i class="fas fa-edit"></i>
                   </button>
-                  <button @click="deleteUser(user.id)" class="action-btn delete" title="Eliminar usuario">
+                    <button type="button" @click="deleteUser(user.id)" class="action-btn delete" title="Desactivar usuario" :aria-label="`Desactivar a ${user.name}`" :disabled="deletingUserId === user.id">
                     <i class="fas fa-trash"></i>
                   </button>
                 </div>
@@ -205,7 +170,6 @@
                         />
                       </div>
                     </div>
-                    
                     <div class="form-group">
                       <label>Correo electrónico</label>
                       <div class="input-wrapper">
@@ -220,6 +184,7 @@
                         />
                       </div>
                     </div>
+                    <p v-if="!editingUser" class="password-hint">El sistema generará una contraseña temporal y la enviará al correo del usuario. Deberá cambiarla en su primer acceso.</p>
                   </div>
                 </div>
 
@@ -262,9 +227,9 @@
                   <i class="fas fa-times"></i>
                   Cancelar
                 </button>
-                <button type="submit" class="btn-primary">
+                <button type="submit" class="btn-primary" :disabled="savingUser">
                   <i class="fas fa-save"></i>
-                  {{ editingUser ? 'Actualizar' : 'Crear' }} Usuario
+                  {{ savingUser ? 'Guardando…' : `${editingUser ? 'Actualizar' : 'Crear'} usuario` }}
                 </button>
               </div>
             </form>
@@ -284,8 +249,8 @@
 </template>
 
 <script>
-// Importa axios para llamadas HTTP
-import axios from 'axios';
+import api from '@/services/api';
+import realTimeService from '@/services/realTimeService';
 
 export default {
   data() {
@@ -306,10 +271,17 @@ export default {
       searchQuery: '',
       selectedRole: '',
       // Estado de carga
-      loading: false,
+      loading: true,
+      isRefreshing: false,
+      hasLoadedUsers: false,
+      usersLoadError: '',
+      savingUser: false,
+      deletingUserId: null,
+      realtimeRefreshTimer: null,
+      notificationTimer: null,
       // Información del usuario actual
-      currentUserEmail: localStorage.getItem('userEmail') || '',
-      currentUserRole: localStorage.getItem('userRole') || '',
+      currentUserEmail: (localStorage.getItem('userEmail') || '').trim().toLowerCase(),
+      currentUserRole: (localStorage.getItem('userRole') || '').trim().toLowerCase(),
       // Notificaciones
       notification: {
         show: false,
@@ -319,52 +291,70 @@ export default {
       }
     };
   },
-  created() {
-    // Carga los usuarios al iniciar el componente
+  mounted() {
+    realTimeService.addListener('data_changed', this.handleRealtimeChange);
     this.fetchUsers();
+  },
+  beforeUnmount() {
+    realTimeService.removeListener('data_changed', this.handleRealtimeChange);
+    clearTimeout(this.realtimeRefreshTimer);
+    clearTimeout(this.notificationTimer);
   },
   computed: {
     // Usuarios filtrados (excluye al usuario actual)
     filteredUsers() {
-      return this.users.filter(u => u.email !== this.currentUserEmail);
+      return this.users.filter(user => String(user.email || '').trim().toLowerCase() !== this.currentUserEmail);
     },
     // Usuarios filtrados para mostrar (con búsqueda y filtro de rol)
     filteredUsersForDisplay() {
       return this.filteredUsers.filter(user => {
-        const matchesSearch = user.name.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-                             user.email.toLowerCase().includes(this.searchQuery.toLowerCase());
+        const query = this.searchQuery.trim().toLowerCase();
+        const matchesSearch = String(user.name || '').toLowerCase().includes(query) ||
+                             String(user.email || '').toLowerCase().includes(query);
         const matchesRole = this.selectedRole === '' || user.role === this.selectedRole;
         return matchesSearch && matchesRole;
       });
     },
     // Roles únicos en el sistema
     uniqueRoles() {
-      const roles = [...new Set(this.users.map(user => user.role))];
-      return roles.sort();
+      const roles = [...new Set(this.filteredUsers.map(user => user.role).filter(Boolean))];
+      return roles.sort((a, b) => this.getRoleDisplayName(a).localeCompare(this.getRoleDisplayName(b), 'es'));
+    },
+    hasActiveFilters() {
+      return Boolean(this.searchQuery.trim() || this.selectedRole);
     }
   },
   methods: {
+    handleRealtimeChange(change = {}) {
+      const entities = change.entities || [];
+      if (entities.length && !entities.includes('users')) return;
+      clearTimeout(this.realtimeRefreshTimer);
+      this.realtimeRefreshTimer = setTimeout(() => this.fetchUsers(), 180);
+    },
+    clearFilters() {
+      this.searchQuery = '';
+      this.selectedRole = '';
+    },
     // Obtiene la lista de usuarios desde la API
-    async fetchUsers() {
-      this.loading = true;
+    async fetchUsers({ notify = false } = {}) {
+      const initialLoad = !this.hasLoadedUsers;
+      this.loading = initialLoad;
+      this.isRefreshing = true;
       try {
-        const token = localStorage.getItem('authToken');
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/users`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-        this.users = response.data;
-        this.showNotification(`${this.users.length} usuarios cargados correctamente`, 'success');
+        const response = await api.get('/users');
+        const users = Array.isArray(response.data) ? response.data : response.data?.users;
+        this.users = Array.isArray(users) ? users : [];
+        this.usersLoadError = '';
+        this.hasLoadedUsers = true;
+        if (notify) this.showNotification('Equipo actualizado.', 'success');
       } catch (error) {
-        if (error.response && error.response.status === 403) {
-          this.showNotification('No tienes permisos para ver los usuarios', 'error', 'fas fa-lock');
-        } else {
-          this.showNotification('Error al cargar usuarios', 'error', 'fas fa-exclamation-triangle');
-        }
         console.error('Error al cargar usuarios:', error);
+        this.usersLoadError = error.response?.status === 403
+          ? 'Tu rol no tiene permiso para consultar el equipo.'
+          : 'No se pudo actualizar el equipo. Revisa tu conexión e inténtalo de nuevo.';
       } finally {
         this.loading = false;
+        this.isRefreshing = false;
       }
     },
     
@@ -391,63 +381,48 @@ export default {
     
     // Elimina un usuario por ID
     async deleteUser(id) {
+      if (this.deletingUserId !== null) return;
       if (!confirm('¿Estás seguro de que quieres eliminar este usuario?')) {
         return;
       }
-      
+      this.deletingUserId = id;
       try {
-        const token = localStorage.getItem('authToken');
-        await axios.delete(`${import.meta.env.VITE_API_URL}/api/users/${id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await api.delete(`/users/${id}`);
         this.showNotification('Usuario eliminado correctamente', 'success');
-        this.fetchUsers();
+        await this.fetchUsers();
       } catch (error) {
-        this.showNotification('Error al eliminar usuario', 'error', 'fas fa-exclamation-triangle');
+        this.showNotification(error.response?.data?.message || error.response?.data?.error || 'No se pudo desactivar el usuario.', 'error', 'fas fa-exclamation-triangle');
         console.error('Error al eliminar usuario:', error);
+      } finally {
+        this.deletingUserId = null;
       }
     },
     
     // Guarda los cambios del usuario
     async saveUser() {
+      if (this.savingUser) return;
+      const name = String(this.form.name || '').trim();
+      const email = String(this.form.email || '').trim().toLowerCase();
+      if (!name || !email) {
+        this.showNotification('Completa el nombre y el correo electrónico.', 'error', 'fas fa-exclamation-triangle');
+        return;
+      }
+      this.savingUser = true;
       try {
-        const token = localStorage.getItem('authToken');
-        
         if (this.editingUser) {
-          // Actualizar usuario existente
-          await axios.put(
-            `${import.meta.env.VITE_API_URL}/api/users/${this.editingUser.id}`,
-            { role: this.form.role },
-            {
-              headers: {
-                Authorization: `Bearer ${token}`
-              }
-            }
-          );
+          await api.put(`/users/${this.editingUser.id}`, { role: this.form.role });
           this.showNotification('Usuario actualizado correctamente', 'success');
         } else {
-          // Crear nuevo usuario
-          await axios.post(
-            `${import.meta.env.VITE_API_URL}/api/users`,
-            this.form,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`
-              }
-            }
-          );
-          this.showNotification('Usuario creado correctamente', 'success');
+          const response = await api.post('/users', { name, email, role: this.form.role });
+          this.showNotification(response.data?.message || 'Usuario creado y contraseña temporal enviada.', 'success');
         }
-        
-        this.fetchUsers();
         this.closeUserModal();
+        await this.fetchUsers();
       } catch (error) {
-        this.showNotification(
-          this.editingUser ? 'Error al actualizar usuario' : 'Error al crear usuario', 
-          'error', 
-          'fas fa-exclamation-triangle'
-        );
+        this.showNotification(error.response?.data?.message || (this.editingUser ? 'No se pudo actualizar el usuario.' : 'No se pudo crear el usuario.'), 'error', 'fas fa-exclamation-triangle');
         console.error('Error al guardar usuario:', error);
+      } finally {
+        this.savingUser = false;
       }
     },
     
@@ -521,6 +496,7 @@ export default {
     
     // Muestra notificaciones
     showNotification(message, type = 'success', icon = 'fas fa-check-circle') {
+      clearTimeout(this.notificationTimer);
       this.notification = {
         show: true,
         message,
@@ -528,7 +504,7 @@ export default {
         icon
       };
       
-      setTimeout(() => {
+      this.notificationTimer = setTimeout(() => {
         this.notification.show = false;
       }, 4000);
     }

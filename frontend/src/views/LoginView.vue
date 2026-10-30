@@ -29,7 +29,8 @@ export default {
 .login-view {
   /* El componente LoginForm maneja todo el styling y layout */
   width: 100%;
-  height: 100vh;
+  min-height: 100vh;
+  height: auto;
 }
 
 /* Reset de estilos que podrían interferir con el LoginForm */

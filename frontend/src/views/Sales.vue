@@ -1,83 +1,41 @@
 <template>
   <div class="dynamic-content sales-page">
-    <!-- Cabecera mejorada para Sales.vue -->
-    <div class="sales-header">
-      <div class="header-content">
-        <div class="header-left">
-          <div class="header-icon">
-            <i class="fas fa-cash-register"></i>
-          </div>
-          <div class="header-text">
-            <h1>Gestión de Ventas</h1>
-            <p class="header-subtitle">Control completo de todas las transacciones de tu supermercado</p>
-            <div class="header-stats">
-              <div class="stat-item">
-                <span class="stat-number">{{ ventas.length }}</span>
-                <span class="stat-label">Total Ventas</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ ventasHoy }}</span>
-                <span class="stat-label">Hoy</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">S/ {{ totalVentas }}</span>
-                <span class="stat-label">Total Facturado</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="header-actions">
-          <button class="btn-new-sale" @click="modalNuevaVenta = true">
-            <i class="fas fa-plus"></i>
-            <span>Nueva Venta</span>
-          </button>
-        </div>
-      </div>
-      
-      <div class="filters-section">
-        <div class="search-container">
-          <div class="search-wrapper">
-            <i class="fas fa-search search-icon"></i>
-            <input
-              type="text"
-              v-model="busqueda"
-              placeholder="Buscar por cliente, producto o número de venta..."
-              class="search-input"
-            />
-            <button v-if="busqueda" @click="busqueda = ''" class="clear-search">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-        </div>
-        
-        <div class="filter-container">
-          <div class="filter-wrapper">
-            <i class="fas fa-calendar filter-icon"></i>
-            <input 
-              type="date" 
-              v-model="filtroFecha" 
-              class="date-filter"
-              title="Filtrar por fecha"
-            />
-          </div>
-        </div>
-        
-        <div class="filter-container">
-          <div class="filter-wrapper">
-            <i class="fas fa-credit-card filter-icon"></i>
-            <select v-model="filtroMetodoPago" class="method-select">
+    <div class="page-heading">
+      <div><p class="eyebrow">TRANSACCIONES</p><h1>Ventas</h1><p>Consulta, filtra y administra las ventas de tu negocio.</p></div>
+      <button class="primary-button" type="button" @click="abrirNuevaVenta"><i class="fas fa-plus"></i> Nueva venta</button>
+    </div>
+
+    <section class="metric-grid compact-metrics">
+      <article class="metric-card"><div class="metric-top"><span>Ventas registradas</span><span class="metric-icon teal"><i class="fas fa-receipt"></i></span></div><strong>{{ ventas.length }}</strong><small class="metric-foot">Transacciones en el sistema</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Ventas de hoy</span><span class="metric-icon blue"><i class="fas fa-calendar-day"></i></span></div><strong>{{ ventasHoy }}</strong><small class="metric-foot">Registradas en la fecha actual</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Total vendido</span><span class="metric-icon violet"><i class="fas fa-wallet"></i></span></div><strong>S/ {{ totalVentas }}</strong><small class="metric-foot">Monto de ventas no anuladas</small></article>
+    </section>
+
+    <section class="demo-panel filters-panel">
+      <div class="table-toolbar sales-toolbar">
+        <div class="search-box"><i class="fas fa-search"></i><input type="text" v-model="busqueda" placeholder="Buscar cliente, producto o número" /><button v-if="busqueda" @click="busqueda = ''" aria-label="Limpiar búsqueda"><i class="fas fa-times"></i></button></div>
+        <div class="sales-filters">
+          <input type="date" v-model="filtroFecha" class="date-filter" title="Filtrar por fecha" />
+          <select v-model="filtroMetodoPago" class="method-select">
               <option value="">Todos los métodos</option>
               <option value="efectivo">Efectivo</option>
               <option value="tarjeta">Tarjeta</option>
               <option value="transferencia">Transferencia</option>
               <option value="yape">Yape</option>
               <option value="plin">Plin</option>
-            </select>
-          </div>
+          </select>
         </div>
-        
         <div class="view-controls">
+          <button
+            v-if="hasActiveFilters"
+            class="clear-filters-btn"
+            type="button"
+            @click="limpiarFiltros"
+            aria-label="Limpiar filtros"
+          >
+            <i class="fas fa-rotate-left"></i>
+            <span>Limpiar</span>
+          </button>
           <button
             class="view-toggle"
             :class="{ active: viewMode === 'cards' }"
@@ -96,19 +54,36 @@
           </button>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Loader animado -->
     <div v-if="!resumenVentas" class="loader"></div>
 
     <!-- Mensaje si no hay ventas -->
     <div v-else-if="ventasFiltradas.length === 0" class="no-sales-msg">
-      <i class="fas fa-receipt"></i>
-      <p>No hay ventas para mostrar.</p>
+      <div class="empty-state-icon"><i :class="ventas.length ? 'fas fa-filter-circle-xmark' : 'fas fa-receipt'"></i></div>
+      <div class="empty-state-copy">
+        <h2>{{ ventas.length ? 'No encontramos ventas con esos filtros' : 'Aún no hay ventas' }}</h2>
+        <p>{{ ventas.length ? 'Prueba cambiando o limpiando los filtros para ver más resultados.' : 'Registra una venta para comenzar a ver tus transacciones aquí.' }}</p>
+      </div>
+      <button v-if="ventas.length" class="btn-secondary empty-state-action" type="button" @click="limpiarFiltros">Limpiar filtros</button>
+      <button v-else class="btn-primary empty-state-action" type="button" @click="modalNuevaVenta = true"><i class="fas fa-plus"></i>Nueva venta</button>
     </div>
 
+    <section v-else class="sales-results table-panel" aria-label="Resultados de ventas">
+      <div class="results-toolbar table-toolbar">
+        <div>
+          <span class="results-eyebrow">Transacciones</span>
+          <h2>Registro de ventas</h2>
+        </div>
+        <span class="results-count">
+          {{ ventasFiltradas.length }} {{ ventasFiltradas.length === 1 ? 'venta' : 'ventas' }}
+          <template v-if="hasActiveFilters">de {{ ventas.length }}</template>
+        </span>
+      </div>
+
     <!-- Vista de ventas en tarjetas mejorada -->
-    <div v-else-if="viewMode === 'cards'" class="sales-grid">
+    <div v-if="viewMode === 'cards'" class="sales-grid">
       <div
         v-for="venta in ventasFiltradas"
         :key="venta.id"
@@ -156,7 +131,7 @@
           
           <div class="sale-total">
             <span class="total-label">Total:</span>
-            <span class="total-amount">S/ {{ venta.total }}</span>
+            <span class="total-amount">S/ {{ Number(venta.total || 0).toFixed(2) }}</span>
           </div>
           
           <div class="sale-actions">
@@ -217,7 +192,7 @@
               <span class="product-count">{{ contarProductos(venta.productos) }}</span>
             </td>
             <td>
-              <span class="table-total">S/ {{ venta.total }}</span>
+              <span class="table-total">S/ {{ Number(venta.total || 0).toFixed(2) }}</span>
             </td>
             <td>
               <span v-if="venta.anulada" class="table-status anulada">
@@ -251,6 +226,7 @@
         </tbody>
       </table>
     </div>
+    </section>
 
     <!-- Modal Nueva Venta Modernizado -->
     <transition name="modal" appear>
@@ -324,7 +300,7 @@
                           <i class="fas fa-search input-icon"></i>
                           <select v-model="productoSeleccionado" class="form-select">
                             <option disabled value="">Buscar producto...</option>
-                            <option v-for="p in productosDisponibles" :key="p.id" :value="p">
+                            <option v-for="p in productosDisponibles" :key="p.id" :value="p" :disabled="Number(p.stock) < 1">
                               {{ p.name }} - S/ {{ p.price }} (Stock: {{ p.stock }})
                             </option>
                           </select>
@@ -363,6 +339,8 @@
                               type="number" 
                               v-model.number="prod.cantidad" 
                               min="1" 
+                              :max="productosDisponibles.find(p => Number(p.id) === Number(prod.id))?.stock || 1"
+                              @change="validarCantidadLinea(prod)"
                               class="quantity-control"
                             />
                             <span class="product-subtotal">
@@ -401,9 +379,9 @@
                   <i class="fas fa-times"></i>
                   Cancelar
                 </button>
-                <button type="submit" class="btn-primary" :disabled="nueva.productos.length === 0">
+                <button type="submit" class="btn-primary" :disabled="nueva.productos.length === 0 || saleSubmitting">
                   <i class="fas fa-cash-register"></i>
-                  Registrar Venta
+                  {{ saleSubmitting ? 'Registrando…' : 'Registrar venta' }}
                 </button>
               </div>
             </form>
@@ -506,11 +484,14 @@
                             <span v-if="prod.codigo" class="code">Código: {{ prod.codigo }}</span>
                           </div>
                         </td>
-                        <td class="price">S/ {{ (prod.precio || 0).toFixed(2) }}</td>
+                        <td class="price">S/ {{ Number(prod.precio || 0).toFixed(2) }}</td>
                         <td class="quantity">
                           <span class="quantity-badge">{{ prod.cantidad }}</span>
                         </td>
-                        <td class="subtotal">S/ {{ (prod.cantidad * (prod.precio || 0)).toFixed(2) }}</td>
+                        <td class="subtotal">S/ {{ (Number(prod.cantidad || 0) * Number(prod.precio || 0)).toFixed(2) }}</td>
+                      </tr>
+                      <tr v-if="!detalleVenta.productos?.length">
+                        <td colspan="4" class="detail-empty">Esta venta no tiene productos asociados.</td>
                       </tr>
                     </tbody>
                   </table>
@@ -530,7 +511,7 @@
                   </div>
                   <div class="total-row final-total">
                     <span>Total:</span>
-                    <span>S/ {{ detalleVenta.total }}</span>
+                    <span>S/ {{ Number(detalleVenta.total || 0).toFixed(2) }}</span>
                   </div>
                 </div>
               </div>
@@ -706,6 +687,7 @@
 // Importa servicios y librerías necesarias
 import salesService from '@/services/sales';
 import productsService from '@/services/products';
+import realTimeService from '@/services/realTimeService';
 import { jsPDF } from "jspdf";
 
 export default {
@@ -728,7 +710,7 @@ export default {
       },
       productoBuscado: "",
       productosFiltrados: [],
-      productoSeleccionado: null,
+      productoSeleccionado: '',
       notificacion: {
         visible: false,
         mensaje: "",
@@ -750,14 +732,23 @@ export default {
       // Nuevos filtros y configuraciones
       filtroFecha: '',
       filtroMetodoPago: '',
-      viewMode: 'cards', // 'cards' o 'table'
+      viewMode: 'table', // La tabla facilita revisar y comparar transacciones
       productosDisponibles: [],
+      realtimeRefreshTimer: null,
+      saleSubmitting: false,
+      notificationTimer: null,
     };
   },
   async mounted() {
+    realTimeService.addListener('data_changed', this.handleRealtimeChange);
     // Carga ventas y productos al iniciar
     await this.fetchVentas();
     await this.fetchProductos();
+  },
+  beforeUnmount() {
+    realTimeService.removeListener('data_changed', this.handleRealtimeChange);
+    clearTimeout(this.realtimeRefreshTimer);
+    clearTimeout(this.notificationTimer);
   },
   computed: {
     // Filtra ventas por cliente, producto, fecha y método de pago
@@ -769,16 +760,16 @@ export default {
         const b = this.busqueda.toLowerCase();
         ventasFiltradas = ventasFiltradas.filter(
           v =>
-            v.cliente.toLowerCase().includes(b) ||
-            v.id.toString().includes(b) ||
-            (v.productos && v.productos.some(p => (p.name || '').toLowerCase().includes(b)))
+            String(v.cliente || '').toLowerCase().includes(b) ||
+            String(v.id || '').includes(b) ||
+            (v.productos && v.productos.some(p => String(p.name || '').toLowerCase().includes(b)))
         );
       }
       
       // Filtro por fecha
       if (this.filtroFecha) {
         ventasFiltradas = ventasFiltradas.filter(v => {
-          const fechaVenta = v.fecha.split(' ')[0]; // Obtiene solo la fecha sin hora
+          const fechaVenta = String(v.fecha || '').slice(0, 10);
           return fechaVenta === this.filtroFecha;
         });
       }
@@ -816,16 +807,20 @@ export default {
     // Estadísticas para el header
     ventasHoy() {
       if (!this.ventas || !Array.isArray(this.ventas)) return 0;
-      const hoy = new Date().toISOString().split('T')[0];
-      return this.ventas.filter(v => v.fecha && v.fecha.startsWith(hoy)).length;
+      const now = new Date();
+      const hoy = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+      return this.ventas.filter(v => String(v.fecha || '').slice(0, 10) === hoy).length;
     },
     
     totalVentas() {
       if (!this.ventas || !Array.isArray(this.ventas)) return '0.00';
       return this.ventas
-        .filter(v => !v.anulada)
-        .reduce((sum, v) => sum + parseFloat(v.total || 0), 0)
+        .filter(v => v.anulada !== true && Number(v.anulada) !== 1)
+        .reduce((sum, v) => sum + (Number.parseFloat(v.total) || 0), 0)
         .toFixed(2);
+    },
+    hasActiveFilters() {
+      return Boolean(this.busqueda.trim() || this.filtroFecha || this.filtroMetodoPago);
     },
   },
   watch: {
@@ -833,17 +828,36 @@ export default {
     productoBuscado(val) {
       this.filtrarProductos();
       const prod = this.productosDisponibles.find(p => (p.name || '').toLowerCase() === (val || '').toLowerCase());
-      this.productoSeleccionado = prod || null;
+      this.productoSeleccionado = prod || '';
     }
   },
   methods: {
+    abrirNuevaVenta() {
+      this.nueva = { cliente: '', productos: [], total: null, metodo_pago: '' };
+      this.productoTemp = { cantidad: 1 };
+      this.modalNuevaVenta = true;
+    },
+    limpiarFiltros() {
+      this.busqueda = '';
+      this.filtroFecha = '';
+      this.filtroMetodoPago = '';
+    },
+    handleRealtimeChange(change = {}) {
+      const entities = change.entities || [];
+      if (!entities.length || !entities.some(entity => ['sales', 'inventory', 'products'].includes(entity))) return;
+      clearTimeout(this.realtimeRefreshTimer);
+      this.realtimeRefreshTimer = setTimeout(() => {
+        if (entities.includes('sales')) this.fetchVentas();
+        if (entities.some(entity => ['inventory', 'products'].includes(entity))) this.fetchProductos();
+      }, 180);
+    },
     // Obtiene todas las ventas desde el servicio
     async fetchVentas() {
       try {
         const res = await salesService.getAll();
-        this.ventas = res.data || [];
+        this.ventas = Array.isArray(res.data) ? res.data : [];
       } catch (e) {
-        alert('Error al cargar ventas');
+        this.mostrarNotificacion('No se pudieron cargar las ventas.');
       } finally {
         this.resumenVentas = true; // <-- Esto oculta el mensaje
       }
@@ -852,75 +866,57 @@ export default {
     async fetchProductos() {
       try {
         const res = await productsService.getAll();
-        this.productosDisponibles = res.data;
+        this.productosDisponibles = Array.isArray(res.data) ? res.data : [];
       } catch (e) {
-        alert('Error al cargar productos');
+        this.mostrarNotificacion('No se pudieron cargar los productos disponibles.');
       }
     },
-    // Registra una nueva venta y actualiza stock
+    // El servidor registra la venta y descuenta las existencias en una transacción FIFO.
     async registrarVenta() {
-  if (!this.nueva.cliente || this.nueva.productos.length === 0) return;
-
-  // Validar stock antes de registrar
-  for (const prod of this.nueva.productos) {
-    const productoOriginal = this.productosDisponibles.find(p => p.id === prod.id);
-    if (productoOriginal && prod.cantidad > productoOriginal.stock) {
-      this.mostrarNotificacion(`No hay suficiente stock para "${productoOriginal.name}". Disponible: ${productoOriginal.stock}`);
-      return;
-    }
-  }
-
-  try {
-    const userId = localStorage.getItem('userId');
-    const nuevaVenta = {
-      cliente: this.nueva.cliente,
-      productos: this.nueva.productos,
-      user_id: userId,
-      metodo_pago: this.nueva.metodo_pago,
-      subtotal: parseFloat(this.subtotal),
-      impuesto: parseFloat(this.impuesto),
-      total: parseFloat(this.totalConImpuesto),
-      usuario: localStorage.getItem('userName') || 'Desconocido'
-    };
-
-    await salesService.create(nuevaVenta);
-
-    // Actualizar stock local
-    for (const prod of this.nueva.productos) {
-      const productoOriginal = this.productosDisponibles.find(p => p.id === prod.id);
-      if (productoOriginal) {
-        const nuevoStock = productoOriginal.stock - prod.cantidad;
-        await productsService.update(prod.id, {
-          name: productoOriginal.name,
-          description: productoOriginal.description,
-          price: productoOriginal.price,
-          purchase_price: productoOriginal.purchase_price,
-          category: productoOriginal.category,
-          marca: productoOriginal.marca,
-          unidad_medida: productoOriginal.unidad_medida,
-          stock: nuevoStock,
-          stock_min: productoOriginal.stock_min,
-          stock_max: productoOriginal.stock_max,
-          image: productoOriginal.image
-        });
+      if (this.saleSubmitting) return;
+      if (!this.nueva.cliente.trim() || !this.nueva.metodo_pago || !this.nueva.productos.length) {
+        this.mostrarNotificacion('Completa los datos del cliente, pago y productos.');
+        return;
       }
-    }
 
-    this.$root.$emit('actualizarLowStock');
-    await this.fetchVentas();
-    await this.fetchProductos();
+      for (const line of this.nueva.productos) {
+        const product = this.productosDisponibles.find(item => Number(item.id) === Number(line.id));
+        const quantity = Number(line.cantidad);
+        if (!product || !Number.isSafeInteger(quantity) || quantity < 1) {
+          this.mostrarNotificacion('Revisa los productos y sus cantidades.');
+          return;
+        }
+        if (quantity > Number(product.stock || 0)) {
+          this.mostrarNotificacion(`Stock insuficiente para "${product.name}". Disponible: ${product.stock || 0}`);
+          return;
+        }
+      }
 
-    // Limpiar formularios y cerrar modal
-    this.nueva = { cliente: "", productos: [], total: null, metodo_pago: "" };
-    this.productoTemp = { cantidad: 1 };
-    this.modalNuevaVenta = false;
+      this.saleSubmitting = true;
+      try {
+        await salesService.create({
+          cliente: this.nueva.cliente.trim(),
+          productos: this.nueva.productos.map(({ id, cantidad }) => ({ id, cantidad: Number(cantidad) })),
+          metodo_pago: this.nueva.metodo_pago,
+          subtotal: Number(this.subtotal),
+          impuesto: Number(this.impuesto),
+          total: Number(this.totalConImpuesto)
+        });
 
-    this.mostrarNotificacion("Venta registrada correctamente");
-  } catch (e) {
-    console.error('Error real al registrar venta:', e);
-    alert('Error al registrar venta');
-  }
-},
+        await Promise.all([this.fetchVentas(), this.fetchProductos()]);
+        this.nueva = { cliente: '', productos: [], total: null, metodo_pago: '' };
+        this.productoTemp = { cantidad: 1 };
+        this.modalNuevaVenta = false;
+        this.mostrarNotificacion('Venta registrada correctamente.');
+      } catch (error) {
+        console.error('Error al registrar venta:', error);
+        const message = error.response?.data?.message || error.response?.data?.error;
+        this.mostrarNotificacion(message || 'No se pudo registrar la venta. Revisa el stock e inténtalo de nuevo.');
+        await this.fetchProductos();
+      } finally {
+        this.saleSubmitting = false;
+      }
+    },
 
     // Abre el modal de detalle de venta
     async abrirDetalle(venta) {
@@ -944,30 +940,51 @@ export default {
     },
     // Agrega un producto a la venta actual
     agregarProducto() {
-      if (this.productoSeleccionado && this.productoTemp.cantidad > 0) {
+      const quantity = Number(this.productoTemp.cantidad);
+      if (!this.productoSeleccionado || !Number.isSafeInteger(quantity) || quantity < 1) {
+        this.mostrarNotificacion('Selecciona un producto y una cantidad entera mayor que cero.');
+        return;
+      }
+      if (Number(this.productoSeleccionado.stock || 0) < 1) {
+        this.mostrarNotificacion('Este producto no tiene stock disponible.');
+        return;
+      }
         // Busca si el producto ya está en la lista
         const idx = this.nueva.productos.findIndex(
           p => p.id === this.productoSeleccionado.id
         );
         if (idx !== -1) {
           // Si ya existe, suma la cantidad
-          this.nueva.productos[idx].cantidad += Number(this.productoTemp.cantidad);
+          const nextQuantity = Number(this.nueva.productos[idx].cantidad) + quantity;
+          if (nextQuantity > Number(this.productoSeleccionado.stock || 0)) {
+            this.mostrarNotificacion(`Stock máximo disponible: ${this.productoSeleccionado.stock}`);
+            return;
+          }
+          this.nueva.productos[idx].cantidad = nextQuantity;
         } else {
           // Si no existe, lo agrega
           this.nueva.productos.push({
             id: this.productoSeleccionado.id,
-            cantidad: Number(this.productoTemp.cantidad),
-            precio: this.productoSeleccionado.price
+            cantidad: quantity,
+            precio: Number(this.productoSeleccionado.price)
           });
         }
         this.productoBuscado = "";
-        this.productoSeleccionado = null;
+        this.productoSeleccionado = '';
         this.productoTemp = { cantidad: 1 };
-      }
     },
     // Elimina un producto de la venta actual
     eliminarProducto(idx) {
       this.nueva.productos.splice(idx, 1);
+    },
+    validarCantidadLinea(line) {
+      const product = this.productosDisponibles.find(item => Number(item.id) === Number(line.id));
+      const max = Number(product?.stock || 0);
+      const quantity = Number(line.cantidad);
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > max) {
+        line.cantidad = Math.max(1, Math.min(max || 1, Number.isFinite(quantity) ? Math.floor(quantity) : 1));
+        this.mostrarNotificacion(`La cantidad debe ser un número entero entre 1 y ${max}.`);
+      }
     },
     // Filtra productos disponibles según búsqueda
     filtrarProductos() {
@@ -978,9 +995,10 @@ export default {
     },
     // Muestra una notificación personalizada
     mostrarNotificacion(msg) {
+      clearTimeout(this.notificationTimer);
       this.notificacion.mensaje = msg;
       this.notificacion.visible = true;
-      setTimeout(() => {
+      this.notificationTimer = setTimeout(() => {
         this.notificacion.visible = false;
       }, 3500);
     },
@@ -1081,66 +1099,190 @@ export default {
     },
     // Imprime la boleta de la venta
     imprimirBoleta() {
-      const contenido = document.getElementById('boleta-contenido').innerHTML;
-      const ventana = window.open('', '', 'width=800,height=600');
+      const venta = this.detalleVenta;
+      const ventana = window.open('', '_blank', 'width=420,height=760');
+      if (!ventana) {
+        this.mostrarNotificacion('Permite las ventanas emergentes para imprimir la boleta.');
+        return;
+      }
+      const escapar = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[char]);
+      const dinero = value => `S/ ${Number(value || 0).toFixed(2)}`;
+      const productos = (venta.productos || []).map(producto => `
+        <tr>
+          <td class="item-name">
+            <strong>${escapar(producto.name || 'Producto')}</strong>
+            ${producto.codigo ? `<small>${escapar(producto.codigo)}</small>` : ''}
+          </td>
+          <td class="item-qty">${Number(producto.cantidad || 0)}</td>
+          <td class="item-price">${dinero(producto.precio)}</td>
+          <td class="item-total">${dinero(Number(producto.cantidad || 0) * Number(producto.precio || 0))}</td>
+        </tr>
+      `).join('');
+      const subtotal = this.calcularSubtotal(venta.productos);
+      const igv = this.calcularIGV(venta.productos);
+      const atendidoPor = localStorage.getItem('userName') || 'Usuario';
+      let impresionIniciada = false;
+      const iniciarImpresion = () => {
+        if (impresionIniciada) return;
+        impresionIniciada = true;
+        ventana.focus();
+        ventana.print();
+      };
+      ventana.onload = iniciarImpresion;
+
       ventana.document.write(`
-        <html>
-          <head>
-            <title>Boleta Electrónica</title>
-            <link rel="stylesheet" href="/src/assets/css/sales.css">
-            <style>
-              body { font-family: Arial, sans-serif; margin: 2rem; }
-              table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-              th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-              th { background: #f0f0f0; }
-            </style>
-          </head>
-          <body>
-            ${contenido}
-          </body>
-        </html>
+        <!doctype html><html lang="es"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Boleta de venta ${escapar(venta.id)}</title>
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          * { box-sizing: border-box; }
+          body { width: 80mm; margin: 0 auto; padding: 4mm; background: #fff; color: #111; font: 10px/1.4 Arial, sans-serif; }
+          .receipt { width: 72mm; margin: 0 auto; }
+          .receipt-header { padding: 2mm 0 3mm; border-bottom: 1px dashed #555; text-align: center; }
+          .receipt-header h1 { margin: 0; font-size: 15px; letter-spacing: .08em; }
+          .receipt-header p { margin: 2px 0 0; color: #555; font-size: 9px; }
+          .receipt-number { margin: 3mm 0 2mm; font-size: 12px; font-weight: 700; text-align: center; }
+          .receipt-meta { display: grid; gap: 3px; padding: 2mm 0 3mm; border-bottom: 1px dashed #555; }
+          .meta-row { display: flex; justify-content: space-between; gap: 8px; }
+          .meta-row span:first-child { color: #555; }
+          .meta-row span:last-child { max-width: 48mm; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+          table { width: 100%; margin-top: 2mm; border-collapse: collapse; table-layout: fixed; }
+          thead { border-bottom: 1px solid #777; }
+          th { padding: 2mm 0; font-size: 8px; text-align: right; }
+          th:first-child { width: 38%; text-align: left; }
+          th:nth-child(2) { width: 10%; }
+          th:nth-child(3) { width: 24%; }
+          th:nth-child(4) { width: 28%; }
+          td { padding: 2mm 0; vertical-align: top; text-align: right; overflow-wrap: anywhere; }
+          td:first-child { text-align: left; }
+          .item-name strong { display: block; font-weight: 600; }
+          .item-name small { display: block; color: #555; font-size: 8px; }
+          .totals { margin-top: 2mm; padding-top: 2mm; border-top: 1px dashed #555; }
+          .total-row { display: flex; justify-content: space-between; gap: 8px; padding: 1mm 0; }
+          .grand-total { margin-top: 1mm; padding-top: 2mm; border-top: 1px solid #333; font-size: 13px; font-weight: 700; }
+          .receipt-footer { margin-top: 4mm; padding-top: 3mm; border-top: 1px dashed #555; color: #444; text-align: center; }
+          .receipt-footer strong { display: block; margin-bottom: 1mm; color: #111; font-size: 11px; }
+          @media screen { body { padding-top: 12px; padding-bottom: 12px; } .receipt { padding: 5mm; box-shadow: 0 2px 18px #0002; } }
+          @media print { body { padding: 4mm; } .receipt { padding: 0; box-shadow: none; } tr { break-inside: avoid; } }
+        </style></head><body><main class="receipt">
+          <header class="receipt-header"><h1>BOLETA DE VENTA</h1><p>Comprobante interno de operación</p></header>
+          <div class="receipt-number">Venta N.º ${escapar(venta.id)}</div>
+          <section class="receipt-meta">
+            <div class="meta-row"><span>Fecha</span><span>${escapar(this.formatearFecha(venta.fecha))}</span></div>
+            <div class="meta-row"><span>Cliente</span><span>${escapar(venta.cliente || 'Cliente no especificado')}</span></div>
+            <div class="meta-row"><span>Pago</span><span>${escapar(this.formatearMetodoPago(venta.metodo_pago))}</span></div>
+            <div class="meta-row"><span>Atendido por</span><span>${escapar(atendidoPor)}</span></div>
+          </section>
+          <table><thead><tr><th>Producto</th><th>Cant.</th><th>P. unit.</th><th>Importe</th></tr></thead><tbody>
+            ${productos || '<tr><td colspan="4" style="text-align:center">Sin productos</td></tr>'}
+          </tbody></table>
+          <section class="totals">
+            <div class="total-row"><span>Subtotal</span><span>${dinero(subtotal)}</span></div>
+            <div class="total-row"><span>IGV (18%)</span><span>${dinero(igv)}</span></div>
+            <div class="total-row grand-total"><span>TOTAL</span><span>${dinero(venta.total)}</span></div>
+          </section>
+          <footer class="receipt-footer"><strong>¡Gracias por su compra!</strong>Conserve este comprobante para su control.</footer>
+        </main></body></html>
       `);
       ventana.document.close();
-      ventana.focus();
-      ventana.print();
+      setTimeout(iniciarImpresion, 250);
     },
     // Descarga la boleta de la venta como PDF
     descargarBoletaPDF() {
-      const doc = new jsPDF();
       const venta = this.detalleVenta;
-      let y = 15;
-
-      doc.setFontSize(18);
-      doc.text("Boleta Electrónica", 105, y, { align: "center" });
-      y += 10;
-      doc.setFontSize(12);
-      doc.text(`N° ${venta.id}`, 105, y, { align: "center" });
-      y += 10;
-      doc.text(`Fecha: ${venta.fecha}`, 15, y);
-      y += 7;
-      doc.text(`Cliente: ${venta.cliente}`, 15, y);
-      y += 10;
-
-      doc.text("Productos:", 15, y);
-      y += 7;
-      venta.productos.forEach((prod) => {
-        doc.text(
-          `- ${prod.name} (x${prod.cantidad}) - S/ ${(prod.cantidad * prod.precio).toFixed(2)}`,
-          20,
-          y
-        );
-        y += 7;
+      const medida = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [80, 1000] });
+      const productos = (venta.productos || []).map(producto => {
+        const nombre = String(producto.name || 'Producto');
+        const lines = medida.splitTextToSize(nombre, 28);
+        return { producto, lines, height: Math.max(1, lines.length) * 4 + (producto.codigo ? 3 : 0) };
       });
+      const filasHeight = productos.reduce((total, row) => total + row.height + 3, 0);
+      const valoresCabecera = [
+        this.formatearFecha(venta.fecha),
+        venta.cliente || 'Cliente no especificado',
+        this.formatearMetodoPago(venta.metodo_pago),
+        localStorage.getItem('userName') || 'Usuario'
+      ];
+      const cabeceraHeight = valoresCabecera.reduce((total, value) =>
+        total + Math.max(4, medida.splitTextToSize(String(value), 45).length * 3.5 + 1), 0);
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [80, 70 + cabeceraHeight + filasHeight] });
+      let y = 8;
+      const center = (text, size = 9, style = 'normal') => {
+        doc.setFont('helvetica', style);
+        doc.setFontSize(size);
+        doc.text(String(text), 40, y, { align: 'center' });
+        y += size * 0.42 + 1;
+      };
+      const separator = () => {
+        doc.setDrawColor(130);
+        doc.setLineDashPattern([1, 1], 0);
+        doc.line(5, y, 75, y);
+        doc.setLineDashPattern([], 0);
+        y += 3;
+      };
+      const field = (label, value) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(label, 5, y);
+        const lines = doc.splitTextToSize(String(value || '—'), 45);
+        doc.setFont('helvetica', 'bold');
+        doc.text(lines, 75, y, { align: 'right', maxWidth: 45 });
+        y += Math.max(4, lines.length * 3.5 + 1);
+      };
+      const money = value => `S/ ${Number(value || 0).toFixed(2)}`;
 
+      center('BOLETA DE VENTA', 12, 'bold');
+      center('Comprobante interno de operación', 7);
+      center(`Venta N.º ${venta.id}`, 9, 'bold');
+      separator();
+      field('Fecha', this.formatearFecha(venta.fecha));
+      field('Cliente', venta.cliente || 'Cliente no especificado');
+      field('Pago', this.formatearMetodoPago(venta.metodo_pago));
+      field('Atendido por', localStorage.getItem('userName') || 'Usuario');
+      separator();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.text('PRODUCTO', 5, y);
+      doc.text('CANT.', 41, y, { align: 'center' });
+      doc.text('P.UNIT', 57, y, { align: 'right' });
+      doc.text('IMPORTE', 75, y, { align: 'right' });
+      y += 4;
+      separator();
+      productos.forEach(({ producto, lines, height }) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.text(lines, 5, y);
+        if (producto.codigo) {
+          doc.setFontSize(6);
+          doc.setTextColor(90);
+          doc.text(String(producto.codigo), 5, y + lines.length * 3.5);
+          doc.setTextColor(0);
+        }
+        doc.setFontSize(7);
+        doc.text(String(Number(producto.cantidad || 0)), 41, y, { align: 'center' });
+        doc.text(money(producto.precio), 57, y, { align: 'right' });
+        doc.text(money(Number(producto.cantidad || 0) * Number(producto.precio || 0)), 75, y, { align: 'right' });
+        y += height + 3;
+      });
+      separator();
+      const summaryLine = (label, value, bold = false) => {
+        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setFontSize(bold ? 10 : 8);
+        doc.text(label, 5, y);
+        doc.text(money(value), 75, y, { align: 'right' });
+        y += bold ? 6 : 4.5;
+      };
+      summaryLine('Subtotal', this.calcularSubtotal(venta.productos));
+      summaryLine('IGV (18%)', this.calcularIGV(venta.productos));
+      separator();
+      summaryLine('TOTAL', venta.total, true);
       y += 5;
-      doc.setFontSize(14);
-      doc.text(`Total: S/ ${venta.total}`, 15, y);
+      center('¡Gracias por su compra!', 9, 'bold');
+      center('Conserve este comprobante para su control.', 6);
 
-      y += 15;
-      doc.setFontSize(12);
-      doc.text("¡Gracias por su compra!", 105, y, { align: "center" });
-
-      // Nombre del archivo personalizado
       doc.save(`boleta-venta-${venta.id}.pdf`);
     },
   },
@@ -2330,11 +2472,11 @@ export default {
 }
 
 /* Elementos faltantes para completar el diseño */
-.detail-modal .modal-container {
+.modal-container.detail-modal {
   max-width: 900px;
 }
 
-.cancel-modal .modal-container {
+.modal-container.cancel-modal {
   max-width: 600px;
 }
 

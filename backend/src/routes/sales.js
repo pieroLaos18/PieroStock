@@ -4,36 +4,22 @@ const express = require('express');
 const router = express.Router();
 const salesController = require('../controllers/salesController');
 const authenticate = require('../middleware/authenticate');
-const migrationService = require('../services/migrationService');
+const authorizeRole = require('../middleware/authorizeRole');
 
-// Endpoint de migración (solo para desarrollo)
-router.post('/migrate-fecha-datetime', async (req, res) => {
-  try {
-    const result = await migrationService.migrateFechaToDatetime();
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error en migración', 
-      error: error.message 
-    });
-  }
-});
+router.use(authenticate);
 
-// Rutas públicas
-router.get('/', salesController.getAllSales);
-router.get('/resumen', salesController.getSalesResumen);
-router.get('/ventas-por-dia', salesController.getVentasPorDia);
-router.get('/ventas-por-dia-anterior', salesController.getVentasPorDiaAnterior);
-router.get('/test-ventas-por-dia', salesController.testVentasPorDia);
-router.get('/debug-ventas', salesController.debugVentas);
-router.get('/metodos-pago', salesController.getMetodosPago);
-router.get('/top-products', salesController.getTopProducts);
-router.get('/:id', salesController.getVentaById);
-router.get('/comprobante/:id', salesController.generarComprobante);
+router.get('/', authorizeRole('admin', 'supervisor', 'cajero'), salesController.getAllSales);
+router.get('/resumen', authorizeRole('admin', 'supervisor'), salesController.getSalesResumen);
+router.get('/ventas-por-dia', authorizeRole('admin', 'supervisor'), salesController.getVentasPorDia);
+router.get('/ventas-por-dia-anterior', authorizeRole('admin', 'supervisor'), salesController.getVentasPorDiaAnterior);
+router.get('/metodos-pago', authorizeRole('admin', 'supervisor'), salesController.getMetodosPago);
+router.get('/top-products', authorizeRole('admin', 'supervisor'), salesController.getTopProducts);
+router.get('/dashboard-insights', authorizeRole('admin', 'supervisor'), salesController.getDashboardInsights);
+router.get('/comprobante/:id', authorizeRole('admin', 'supervisor', 'cajero'), salesController.generarComprobante);
+router.get('/:id', authorizeRole('admin', 'supervisor', 'cajero'), salesController.getVentaById);
 
 // Rutas protegidas
-router.post('/', authenticate, salesController.createVenta);
-router.put('/anular/:id', authenticate, salesController.anularVenta);
+router.post('/', authorizeRole('admin', 'supervisor', 'cajero'), salesController.createVenta);
+router.put('/anular/:id', authorizeRole('admin', 'supervisor'), salesController.anularVenta);
 
 module.exports = router;

@@ -1,10 +1,13 @@
 // salesService.js
 
 const pool = require('../config/db');
+const { registrarActividad } = require('./activityService');
 
 // Obtener todas las ventas con sus productos
-async function getAllSalesWithProducts() {
-  const [ventas] = await pool.query('SELECT * FROM ventas ORDER BY fecha DESC');
+async function getAllSalesWithProducts(userId = null) {
+  const [ventas] = userId === null
+    ? await pool.query('SELECT * FROM ventas ORDER BY fecha DESC LIMIT 500')
+    : await pool.query('SELECT * FROM ventas WHERE user_id = ? ORDER BY fecha DESC LIMIT 500', [userId]);
   if (ventas.length === 0) return [];
 
   const ventaIds = ventas.map(v => v.id);
@@ -39,38 +42,7 @@ async function getSalesSummary() {
 // Obtener ventas por día de los últimos días
 async function getSalesByDay(days = 7) {
   try {
-    // Primero vamos a ver qué datos hay realmente en la tabla
-    const [totalVentas] = await pool.query(
-      `SELECT COUNT(*) as total, 
-              MIN(fecha) as fecha_min, 
-              MAX(fecha) as fecha_max,
-              SUM(total) as suma_total
-       FROM ventas WHERE anulada = 0`
-    );
-    
-    console.log('� Estadísticas generales:', {
-      totalVentas: totalVentas[0].total,
-      fechaMin: totalVentas[0].fecha_min,
-      fechaMax: totalVentas[0].fecha_max,
-      sumaTotal: totalVentas[0].suma_total
-    });
-
-    // Consulta simplificada para ver todas las ventas recientes
-    const [ventasRecientes] = await pool.query(
-      `SELECT 
-         DATE_FORMAT(fecha, '%Y-%m-%d') as fecha_formateada,
-         fecha,
-         total,
-         cliente,
-         anulada
-       FROM ventas 
-       WHERE anulada = 0
-       ORDER BY fecha DESC 
-       LIMIT 10`
-    );
-    
-    console.log('📊 Ventas recientes (muestra):', ventasRecientes);
-
+    // Consulta agregada; nunca registra información de clientes o importes en logs.
     // Ahora la consulta principal con formato de fecha corregido
     const [rows] = await pool.query(
       `SELECT 
@@ -105,12 +77,8 @@ async function getSalesByDay(days = 7) {
       [days]
     );
     
-    console.log('📈 Resultado consulta principal:', rows);
-    
-    // Si no hay datos en el rango específico, mostrar las últimas ventas agrupadas por día
+// Si no hay datos en el rango específico, mostrar las últimas ventas agrupadas por día
     if (rows.length === 0) {
-      console.log('⚠️ No hay ventas en los últimos', days, 'días, obteniendo últimas ventas...');
-      
       const [lastSales] = await pool.query(
         `SELECT 
            DATE_FORMAT(fecha, '%Y-%m-%d') as fecha,
@@ -144,7 +112,6 @@ async function getSalesByDay(days = 7) {
         [days]
       );
       
-      console.log('📈 Últimas ventas encontradas:', lastSales);
       return lastSales.map(row => ({
         dia: row.dia,
         fecha: row.fecha,
@@ -161,7 +128,7 @@ async function getSalesByDay(days = 7) {
     }));
     
   } catch (error) {
-    console.error('❌ Error en getSalesByDay:', error);
+    console.error(`[sales] Error en consulta diaria (${error.code || 'DB_ERROR'}).`);
     throw error;
   }
 }
@@ -216,8 +183,11 @@ async function getPaymentMethods() {
 }
 
 // Obtener detalle de una venta por ID
-async function getSaleById(id) {
-  const [venta] = await pool.query('SELECT * FROM ventas WHERE id = ?', [id]);
+async function getSaleById(id, userId = null) {
+  const [venta] = userId === null
+    ? await pool.query('SELECT * FROM ventas WHERE id = ?', [id])
+    : await pool.query('SELECT * FROM ventas WHERE id = ? AND user_id = ?', [id, userId]);
+  if (!venta.length) return null;
   const [productos] = await pool.query(
     `SELECT dv.*, p.name FROM detalle_ventas dv
      JOIN products p ON dv.producto_id = p.id WHERE dv.venta_id = ?`,
@@ -228,7 +198,7 @@ async function getSaleById(id) {
 }
 
 // Registrar nueva venta y actualizar stock
-async function createSale({ productos, cliente = '', user_id, metodo_pago, usuario }) {
+async function createSale({ productos, cliente = '', user_id, metodo_pago }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -236,7 +206,7 @@ async function createSale({ productos, cliente = '', user_id, metodo_pago, usuar
     // Obtener precios actuales desde la base de datos
     const ids = productos.map(p => p.id);
     const [productosDB] = await conn.query(
-      `SELECT id, price FROM products WHERE id IN (${ids.map(() => '?').join(',')})`,
+      `SELECT id, price FROM products WHERE activo = 1 AND id IN (${ids.map(() => '?').join(',')})`,
       ids
     );
 
@@ -259,19 +229,47 @@ async function createSale({ productos, cliente = '', user_id, metodo_pago, usuar
     );
     const ventaId = insertResult.insertId;
 
-    // Insertar productos en detalle_ventas y actualizar stock
+    // Descontar cada venta de los lotes más antiguos que aún tengan unidades (FIFO).
     for (const prod of productos) {
       const prodDB = productosDB.find(pdb => pdb.id === prod.id);
-      const [[stockCheck]] = await conn.query('SELECT stock FROM products WHERE id = ?', [prod.id]);
+      const [[stockCheck]] = await conn.query('SELECT stock FROM products WHERE id = ? FOR UPDATE', [prod.id]);
 
       if (!stockCheck || stockCheck.stock < prod.cantidad) {
         throw new Error(`Stock insuficiente para el producto ID ${prod.id}`);
       }
 
-      await conn.query(
+      const [detailResult] = await conn.query(
         'INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_unitario) VALUES (?, ?, ?, ?)',
         [ventaId, prod.id, prod.cantidad, prodDB.price]
       );
+
+      const [batches] = await conn.query(
+        `SELECT id, cantidad_disponible
+         FROM product_batches
+         WHERE product_id = ? AND cantidad_disponible > 0
+         ORDER BY fecha_ingreso ASC, id ASC
+         FOR UPDATE`,
+        [prod.id]
+      );
+      const batchStock = batches.reduce((sum, batch) => sum + Number(batch.cantidad_disponible), 0);
+      if (batchStock < Number(prod.cantidad)) {
+        throw new Error(`Los lotes de ${prodDB.name} no cuadran con el stock disponible. Revisa el inventario antes de vender.`);
+      }
+
+      let remaining = Number(prod.cantidad);
+      for (const batch of batches) {
+        if (remaining === 0) break;
+        const allocated = Math.min(remaining, Number(batch.cantidad_disponible));
+        await conn.query(
+          'UPDATE product_batches SET cantidad_disponible = cantidad_disponible - ? WHERE id = ?',
+          [allocated, batch.id]
+        );
+        await conn.query(
+          'INSERT INTO sale_batch_allocations (detalle_venta_id, batch_id, cantidad) VALUES (?, ?, ?)',
+          [detailResult.insertId, batch.id, allocated]
+        );
+        remaining -= allocated;
+      }
 
       await conn.query(
         'UPDATE products SET stock = stock - ? WHERE id = ?',
@@ -280,10 +278,12 @@ async function createSale({ productos, cliente = '', user_id, metodo_pago, usuar
     }
 
     // Registrar en el historial de actividades
-    await conn.query(
-      'INSERT INTO activities (descripcion, usuario) VALUES (?, ?)',
-      [`Venta registrada para el cliente "${cliente}" por S/ ${total}`, usuario || 'Desconocido']
-    );
+    await registrarActividad({
+      userId: user_id,
+      tipo: 'venta',
+      descripcion: `Registró la venta #${ventaId}`,
+      detalles: `Cliente: ${cliente || 'Sin nombre'} · Total: S/ ${total.toFixed(2)} · Pago: ${metodo_pago || 'No indicado'}`
+    }, conn);
 
     await conn.commit();
     return ventaId;
@@ -303,27 +303,54 @@ async function cancelSale(id, motivo, user_id) {
   try {
     await conn.beginTransaction();
 
-    const [ventaCheck] = await conn.query('SELECT anulada FROM ventas WHERE id = ?', [id]);
+    const [ventaCheck] = await conn.query('SELECT anulada FROM ventas WHERE id = ? FOR UPDATE', [id]);
     if (ventaCheck.length === 0) throw new Error('Venta no encontrada');
     if (ventaCheck[0].anulada) throw new Error('La venta ya está anulada');
 
     await conn.query('UPDATE ventas SET anulada = 1, motivo_anulacion = ? WHERE id = ?', [motivo, id]);
 
-    const [productos] = await conn.query('SELECT producto_id, cantidad FROM detalle_ventas WHERE venta_id = ?', [id]);
+    const [productos] = await conn.query('SELECT id, producto_id, cantidad FROM detalle_ventas WHERE venta_id = ?', [id]);
     for (const prod of productos) {
+      const [allocations] = await conn.query(
+        'SELECT batch_id, cantidad FROM sale_batch_allocations WHERE detalle_venta_id = ?',
+        [prod.id]
+      );
+
+      if (allocations.length) {
+        for (const allocation of allocations) {
+          await conn.query(
+            'UPDATE product_batches SET cantidad_disponible = cantidad_disponible + ? WHERE id = ?',
+            [allocation.cantidad, allocation.batch_id]
+          );
+        }
+      } else {
+        // Las ventas anteriores al control por lotes devuelven unidades al lote inicial.
+        const [[oldestBatch]] = await conn.query(
+          'SELECT id FROM product_batches WHERE product_id = ? ORDER BY fecha_ingreso ASC, id ASC LIMIT 1 FOR UPDATE',
+          [prod.producto_id]
+        );
+        if (oldestBatch) {
+          await conn.query(
+            'UPDATE product_batches SET cantidad_disponible = cantidad_disponible + ? WHERE id = ?',
+            [prod.cantidad, oldestBatch.id]
+          );
+        } else {
+          await conn.query(`
+            INSERT INTO product_batches
+              (product_id, codigo_lote, cantidad_inicial, cantidad_disponible, user_id)
+            VALUES (?, ?, ?, ?, ?)`,
+          [prod.producto_id, `DEV-${id}-${prod.producto_id}`, prod.cantidad, prod.cantidad, user_id || null]);
+        }
+      }
       await conn.query('UPDATE products SET stock = stock + ? WHERE id = ?', [prod.cantidad, prod.producto_id]);
     }
 
-    let nombreUsuario = 'Desconocido';
-    if (user_id) {
-      const [[usuario]] = await conn.query('SELECT nombre FROM users WHERE id = ?', [user_id]);
-      if (usuario) nombreUsuario = usuario.nombre;
-    }
-
-    await conn.query(
-      'INSERT INTO activities (descripcion, usuario) VALUES (?, ?)',
-      [`Venta N°${id} anulada. Motivo: ${motivo}`, nombreUsuario]
-    );
+    await registrarActividad({
+      userId: user_id,
+      tipo: 'venta',
+      descripcion: `Anuló la venta #${id}`,
+      detalles: `Motivo: ${motivo || 'No especificado'}`
+    }, conn);
 
     await conn.commit();
     return { message: 'Venta anulada correctamente y stock recuperado' };
@@ -357,11 +384,46 @@ async function getTopProducts(limit = 5) {
   return rows;
 }
 
+// Sales leaders and seasonal replenishment estimates use completed history only.
+async function getDashboardInsights() {
+  const [[calendar]] = await pool.query('SELECT MONTH(CURDATE()) AS current_month');
+  const [topSellers] = await pool.query(
+    `SELECT u.id, u.nombre, u.rol, u.imagen,
+            COUNT(v.id) AS ventas_realizadas,
+            COALESCE(SUM(v.total), 0) AS total_vendido
+     FROM ventas v
+     JOIN users u ON u.id = v.user_id
+     WHERE v.anulada = 0
+     GROUP BY u.id, u.nombre, u.rol, u.imagen
+     ORDER BY total_vendido DESC, ventas_realizadas DESC
+     LIMIT 5`
+  );
+
+  const [monthlyRows] = await pool.query(
+    `SELECT p.id, p.name, p.category, p.image, p.stock, p.stock_min, p.stock_max,
+            YEAR(v.fecha) AS anio, MONTH(v.fecha) AS mes,
+            SUM(dv.cantidad) AS unidades
+     FROM products p
+     JOIN detalle_ventas dv ON dv.producto_id = p.id
+     JOIN ventas v ON v.id = dv.venta_id
+     WHERE p.activo = 1
+       AND v.anulada = 0
+       AND v.fecha >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 36 MONTH)
+       AND v.fecha < DATE_FORMAT(CURDATE(), '%Y-%m-01')
+     GROUP BY p.id, p.name, p.category, p.image, p.stock, p.stock_min, p.stock_max,
+              YEAR(v.fecha), MONTH(v.fecha)`
+  );
+
+  return { topSellers, monthlyRows, historyMonths: 36, currentMonth: Number(calendar.current_month) };
+}
+
 // Generar comprobante
-async function generateComprobante(id) {
-  const [ventaRows] = await pool.query('SELECT * FROM ventas WHERE id = ?', [id]);
+async function generateComprobante(id, userId = null) {
+  const [ventaRows] = userId === null
+    ? await pool.query('SELECT * FROM ventas WHERE id = ?', [id])
+    : await pool.query('SELECT * FROM ventas WHERE id = ? AND user_id = ?', [id, userId]);
+  if (ventaRows.length === 0) return null;
   const [detalleRows] = await pool.query('SELECT * FROM detalle_ventas WHERE venta_id = ?', [id]);
-  if (ventaRows.length === 0) throw new Error('Venta no encontrada');
 
   const venta = ventaRows[0];
   return {
@@ -388,5 +450,6 @@ module.exports = {
   createVenta: createSale,
   anularVenta: cancelSale,
   generarComprobante: generateComprobante,
-  getTopProducts
+  getTopProducts,
+  getDashboardInsights
 };

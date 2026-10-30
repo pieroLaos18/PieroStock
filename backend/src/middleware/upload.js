@@ -1,27 +1,35 @@
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
+const imageTypes = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, path.join(__dirname, '../../uploads'));
   },
   filename: (req, file, cb) => {
-    const extension = path.extname(file.originalname);
-    const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, `${uniqueName}${extension}`);
+    cb(null, `product_${Date.now()}_${crypto.randomBytes(8).toString('hex')}${imageTypes[file.mimetype]}`);
   },
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedExtensions = ['.jpeg', '.jpg', '.png', '.gif'];
-  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (allowedExtensions.includes(ext) && allowedMimeTypes.includes(file.mimetype)) {
-    return cb(null, true);
-  }
-  cb(new Error(`Formato inválido: ${file.mimetype}`));
+  if (imageTypes[file.mimetype]) return cb(null, true);
+  cb(new Error('Usa una imagen JPG, PNG, GIF o WebP.'));
 };
 
-const upload = multer({ storage, fileFilter });
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+    fields: 20,
+    parts: 21,
+    fieldNameSize: 100,
+    fieldSize: 10 * 1024,
+    fieldNestingDepth: 5,
+    fieldArrayIndexLimit: 20,
+  },
+});
 
 module.exports = upload;

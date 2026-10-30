@@ -1,21 +1,41 @@
 <template>
-  <div class="verificar-container">
-    <div class="verificar-box">
-      <h2>Verificación de Cuenta</h2>
-
-      <div v-if="loading">Verificando tu cuenta, por favor espera...</div>
-
-      <div v-if="success" class="success">
-        {{ success }}<br />
-        Serás redirigido en breve...
-      </div>
-
-      <div v-if="error" class="error">
-        {{ error }}
-        <div v-if="allowResend">
-          <button @click="reenviarCorreo" class="resend-btn">Reenviar verificación</button>
+  <div class="auth-page auth-page--verification">
+    <div class="auth-card">
+      <aside class="auth-aside">
+        <router-link class="auth-brand" to="/login" aria-label="Sistema de ventas, inicio">
+          <span class="auth-brand-mark"><i class="fas fa-store" aria-hidden="true"></i></span>
+          <span>Sistema de ventas</span>
+        </router-link>
+        <div class="auth-aside-copy">
+          <p class="auth-kicker">Protección de cuenta</p>
+          <h2>Confirmemos tu correo.</h2>
+          <p>La verificación ayuda a mantener tu cuenta vinculada a una dirección válida.</p>
         </div>
-      </div>
+        <p class="auth-aside-footer"><span></span> Un paso para completar tu registro</p>
+      </aside>
+      <main class="auth-panel">
+        <section class="verify-content" aria-live="polite">
+          <div class="verify-icon" :class="{ 'is-success': success, 'is-error': error }" aria-hidden="true">
+            <i v-if="loading" class="fas fa-envelope-open-text"></i>
+            <i v-else-if="success" class="fas fa-check"></i>
+            <i v-else class="fas fa-envelope"></i>
+          </div>
+          <p class="auth-kicker">Verificación de cuenta</p>
+          <h1>{{ loading ? 'Estamos verificando tu cuenta' : success ? 'Correo confirmado' : 'No pudimos verificar el correo' }}</h1>
+          <p v-if="loading" class="verify-description">Espera un momento mientras comprobamos tu enlace.</p>
+          <p v-if="success" class="auth-feedback auth-feedback--success" role="status">{{ success }} Serás redirigido al inicio de sesión en breve.</p>
+          <p v-if="error" class="auth-feedback auth-feedback--error" role="alert">{{ error }}</p>
+          <form v-if="allowResend" class="verify-resend-form" @submit.prevent="reenviarCorreo">
+            <label for="verify-email">Correo electrónico de tu cuenta</label>
+            <div class="auth-input-wrap">
+              <i class="fas fa-envelope" aria-hidden="true"></i>
+              <input id="verify-email" v-model="email" type="email" autocomplete="email" required placeholder="nombre@empresa.com" />
+            </div>
+            <button type="submit" class="auth-primary-button">Reenviar enlace</button>
+          </form>
+          <router-link v-if="!loading" to="/login" class="auth-back-link">Volver al inicio de sesión</router-link>
+        </section>
+      </main>
     </div>
   </div>
 </template>
@@ -30,13 +50,11 @@ export default {
       error: null,
       loading: true,
       allowResend: false,
-      email: null, // Se obtendrá desde el backend si es posible
+      email: '',
     };
   },
   async mounted() {
     const token = this.$route.query.token;
-    console.log('🔐 Token capturado desde URL:', token);
-
     if (!token || typeof token !== 'string') {
       this.error = 'Token no válido o faltante.';
       this.loading = false;
@@ -52,7 +70,6 @@ export default {
         this.$router.push('/login');
       }, 3000);
     } catch (err) {
-      console.error('❌ Error al verificar:', err);
       this.error = err.response?.data?.message || 'Ocurrió un error al verificar la cuenta.';
       this.loading = false;
 
@@ -68,10 +85,7 @@ export default {
   methods: {
     async reenviarCorreo() {
       try {
-        const email = prompt('Ingresa tu correo electrónico para reenviar el enlace de verificación:');
-        if (!email) return;
-
-        const response = await axios.post('/auth/reenviar-verificacion', { correo_electronico: email });
+        const response = await axios.post('/auth/reenviar-verificacion', { correo_electronico: this.email });
         this.success = response.data.message;
         this.error = null;
         this.allowResend = false;
@@ -83,46 +97,3 @@ export default {
   },
 };
 </script>
-
-<style scoped>
-.verificar-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background: #f7f7f7;
-}
-
-.verificar-box {
-  background: white;
-  padding: 2rem;
-  border-radius: 10px;
-  box-shadow: 0 0 10px #ccc;
-  text-align: center;
-  max-width: 400px;
-}
-
-.success {
-  color: green;
-  margin-top: 1rem;
-}
-
-.error {
-  color: red;
-  margin-top: 1rem;
-}
-
-.resend-btn {
-  margin-top: 1rem;
-  padding: 0.5rem 1rem;
-  background-color: #1976d2;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.resend-btn:hover {
-  background-color: #135ba1;
-}
-</style>

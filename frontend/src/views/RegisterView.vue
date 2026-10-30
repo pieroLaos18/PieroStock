@@ -20,9 +20,11 @@ export default {
 </script>
 
 <style scoped>
-/* Estilos para centrar la vista de registro */
+/* La tarjeta de autenticación controla su propio centrado y espaciado. */
 .register-view {
-  text-align: center;
-  margin-top: 50px;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  text-align: left;
 }
 </style>

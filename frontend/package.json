@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build:demo": "vite build --config vite.demo.config.js --configLoader runner",
+    "postbuild:demo": "node scripts/postbuild-demo.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

@@ -2,7 +2,7 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 // Validación de variables de entorno requeridas
-const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+const requiredEnv = ['DB_HOST', 'DB_USER', 'DB_NAME'];
 for (const key of requiredEnv) {
   if (!process.env[key]) {
     throw new Error(`Falta la variable de entorno: ${key}`);
@@ -12,8 +12,9 @@ for (const key of requiredEnv) {
 // Crear el pool de conexiones con opciones adicionales
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  password: process.env.DB_PASSWORD ?? '',
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,     // Límite de conexiones en el pool

@@ -1,6 +1,7 @@
 // Servicio de configuración base de Axios para las peticiones a la API
 
 import axios from 'axios';
+import { clearSession } from './session';
 
 // Crea una instancia de Axios con la configuración base
 const api = axios.create({
@@ -23,9 +24,9 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   response => response,
   error => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+    if (error.response?.status === 401) {
       // Limpia la sesión y redirige al login
-      localStorage.clear();
+      clearSession();
       window.location.href = '/login'; // O usa tu router si prefieres
     }
     return Promise.reject(error);

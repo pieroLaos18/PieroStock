@@ -3,36 +3,55 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const { generarToken } = require('../utils/jwtHelper');
-const { enviarCorreoRecuperacion } = require('../utils/emailSender');
 const { registrarSesion } = require('../services/sessionService');
-const { enviarCorreoVerificacion } = require('../utils/emailSender');
+const { enviarCorreoRecuperacion, enviarCorreoVerificacion, isEmailConfigured } = require('../utils/emailSender');
+const { PASSWORD_POLICY_MESSAGE, isPasswordValid } = require('../utils/passwordPolicy');
+const { registrarActividad } = require('../services/activityService');
+const { hashToken } = require('../utils/tokenHash');
+const realtimeHub = require('../services/realtimeHub');
+const DUMMY_PASSWORD_HASH = '$2b$10$IDLg30InPr.UpVuRh9lIBOWern/nsJLZwV7eQGaKJAOnhiPnclELy';
+
+const respondWithEmailError = (res, error, allowResend = false) => {
+  const code = error?.code || 'EMAIL_DELIVERY_FAILED';
+  console.error(`[auth] No se pudo enviar el correo (${code}).`);
+  const message = code === 'EMAIL_CONFIG_MISSING'
+    ? 'Configura EMAIL_USER y EMAIL_PASS en backend/.env y reinicia el backend.'
+    : 'No se pudo enviar el correo. Revisa EMAIL_USER, EMAIL_PASS y la contraseña de aplicación de Gmail.';
+  return res.status(503).json({ message, allowResend });
+};
 
 const login = async (req, res) => {
   const { correo_electronico, password } = req.body;
 
   try {
-    const [users] = await pool.query('SELECT * FROM users WHERE correo_electronico = ?', [correo_electronico]);
+    const [users] = await pool.query(
+      `SELECT id, correo_electronico, password, nombre, rol, imagen,
+              activo, verificado, must_change_password
+       FROM users WHERE correo_electronico = ? LIMIT 1`,
+      [correo_electronico]
+    );
     const user = users[0];
 
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (!user) {
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      return res.status(401).json({ message: 'Correo electrónico o contraseña incorrectos.' });
+    }
 
-    // ✅ Validación de cuenta verificada
+    // Comprueba primero la contraseña para no revelar si la cuenta está verificada o activa.
+    const validPass = await bcrypt.compare(password, user.password);
+    if (!validPass) return res.status(401).json({ message: 'Correo electrónico o contraseña incorrectos.' });
+    if (user.activo !== 1) return res.status(401).json({ message: 'Correo electrónico o contraseña incorrectos.' });
     if (user.verificado !== 1) {
       return res.status(403).json({ message: 'Tu cuenta aún no ha sido verificada. Revisa tu correo electrónico.' });
     }
 
-    // ✅ Validación de cuenta activa
-    if (user.activo !== 1) return res.status(403).json({ message: 'Usuario inactivo' });
-
-    // ✅ Verificación de contraseña
-    const validPass = await bcrypt.compare(password, user.password);
-    if (!validPass) return res.status(401).json({ message: 'Contraseña incorrecta' });
-
     // ✅ Registrar último inicio de sesión y actividad
     await pool.query('UPDATE users SET last_login = NOW(), is_online = 1 WHERE id = ?', [user.id]);
-    await pool.query('INSERT INTO activities (descripcion) VALUES (?)', [
-      `Inicio de sesión del usuario ${user.nombre} (${user.correo_electronico})`
-    ]);
+    await registrarActividad({
+      userId: user.id,
+      tipo: 'login',
+      descripcion: 'Inició sesión'
+    });
 
     const token = generarToken(user);
 
@@ -51,6 +70,7 @@ const login = async (req, res) => {
 
     res.status(200).json({
       token,
+      requiresPasswordChange: Boolean(user.must_change_password),
       user: {
         id: user.id,
         name: user.nombre,
@@ -65,14 +85,35 @@ const login = async (req, res) => {
   }
 };
 
+const changeTemporaryPassword = async (req, res) => {
+  const { password } = req.body;
+  if (!isPasswordValid(password)) return res.status(400).json({ message: PASSWORD_POLICY_MESSAGE });
+  if (!req.user.mustChangePassword) return res.status(400).json({ message: 'Esta cuenta no requiere cambiar una contraseña temporal.' });
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await pool.query('UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?', [hashedPassword, req.user.id]);
+    await registrarActividad({ userId: req.user.id, tipo: 'usuario', descripcion: 'Cambió su contraseña temporal' });
+    return res.json({ message: 'Contraseña actualizada. Ya puedes usar el sistema.' });
+  } catch (error) {
+    console.error('[auth] No se pudo actualizar la contraseña temporal:', error.message);
+    return res.status(500).json({ message: 'No se pudo actualizar la contraseña.' });
+  }
+};
+
 const register = async (req, res) => {
-  const { correo_electronico, password, nombre, apellido, rol, direccion } = req.body;
+  const { correo_electronico, password, nombre, apellido, direccion } = req.body;
+
+  if (!isPasswordValid(password)) {
+    return res.status(400).json({ message: PASSWORD_POLICY_MESSAGE });
+  }
 
   try {
     // Verifica si ya existe un usuario activo
+    const normalizedEmail = correo_electronico.trim().toLowerCase();
     const [existingUsers] = await pool.query(
       'SELECT * FROM users WHERE correo_electronico = ?',
-      [correo_electronico]
+      [normalizedEmail]
     );
     if (existingUsers.length > 0) {
       return res.status(400).json({ message: 'El email ya está en uso' });
@@ -81,10 +122,14 @@ const register = async (req, res) => {
     // Verifica si ya está pendiente de verificación
     const [pending] = await pool.query(
       'SELECT * FROM pending_users WHERE correo_electronico = ?',
-      [correo_electronico]
+      [normalizedEmail]
     );
 
     if (pending.length > 0) {
+      if (!isEmailConfigured()) {
+        return respondWithEmailError(res, { code: 'EMAIL_CONFIG_MISSING' }, true);
+      }
+
       const lastSent = new Date(pending[0].ultimo_envio);
       const now = new Date();
       const diffMs = now - lastSent;
@@ -105,13 +150,30 @@ const register = async (req, res) => {
         `UPDATE pending_users 
          SET token_verificacion = ?, token_expires_at = ?, ultimo_envio = NOW()
          WHERE correo_electronico = ?`,
-        [newToken, tokenExpiresAt, correo_electronico]
+        [hashToken(newToken), tokenExpiresAt, normalizedEmail]
       );
 
-      const link = `${process.env.FRONTEND_URL}/verificar?token=${newToken}`;
-      await enviarCorreoVerificacion(correo_electronico, nombre, newToken);
+      try {
+      await enviarCorreoVerificacion(normalizedEmail, pending[0].nombre, newToken);
+      } catch (emailError) {
+        try {
+          await pool.query(
+            `UPDATE pending_users
+             SET token_verificacion = ?, token_expires_at = ?, ultimo_envio = ?
+             WHERE correo_electronico = ?`,
+            [pending[0].token_verificacion, pending[0].token_expires_at, pending[0].ultimo_envio, normalizedEmail]
+          );
+        } catch (restoreError) {
+          console.error(`[auth] No se pudo restaurar el registro pendiente (${restoreError.code || 'DB_ERROR'}).`);
+        }
+        return respondWithEmailError(res, emailError, true);
+      }
 
       return res.status(200).json({ message: 'Se ha reenviado el correo de verificación.' });
+    }
+
+    if (!isEmailConfigured()) {
+      return respondWithEmailError(res, { code: 'EMAIL_CONFIG_MISSING' });
     }
 
     // Primer registro
@@ -123,44 +185,57 @@ const register = async (req, res) => {
       `INSERT INTO pending_users 
       (correo_electronico, password, nombre, apellido, rol, direccion, token_verificacion, token_expires_at, ultimo_envio)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [correo_electronico, hashed, nombre, apellido, (rol || 'cajero').toLowerCase(), direccion, token, tokenExpiresAt]
+      [normalizedEmail, hashed, String(nombre).trim(), apellido || null, 'cajero', direccion || null, hashToken(token), tokenExpiresAt]
     );
 
-    const link = `${process.env.FRONTEND_URL}/verificar?token=${token}`;
-    await enviarCorreoVerificacion(correo_electronico, nombre, token);
+    try {
+      await enviarCorreoVerificacion(normalizedEmail, nombre, token);
+    } catch (emailError) {
+      try {
+        await pool.query('DELETE FROM pending_users WHERE correo_electronico = ?', [normalizedEmail]);
+      } catch (cleanupError) {
+        console.error(`[auth] No se pudo limpiar el registro pendiente (${cleanupError.code || 'DB_ERROR'}).`);
+      }
+      return respondWithEmailError(res, emailError);
+    }
 
     await pool.query(
-      'INSERT INTO activities (descripcion, usuario) VALUES (?, ?)',
-      [`Registro de nuevo usuario pendiente de verificación: ${nombre}`, nombre]
+      'INSERT INTO activities (descripcion, usuario, tipo, detalles) VALUES (?, ?, ?, ?)',
+      [`Registró una cuenta pendiente de verificación: ${nombre}`, nombre, 'usuario', `Cuenta: ${correo_electronico}`]
     );
 
     res.status(201).json({ message: 'Se ha enviado un correo de verificación. Por favor verifica tu cuenta.' });
   } catch (err) {
-    console.error('Error en registro:', err);
+    console.error(`[auth] Error en registro (${err.code || 'UNKNOWN'}).`);
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
 
 const forgotPassword = async (req, res) => {
-  const { email } = req.body;
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const genericResponse = { message: 'Si existe una cuenta activa con ese correo, enviaremos instrucciones para restablecer la contraseña.' };
   try {
-    const [users] = await pool.query('SELECT * FROM users WHERE correo_electronico = ?', [email]);
-    if (!users.length) return res.status(404).json({ message: 'Correo no registrado' });
+    const [users] = await pool.query('SELECT id, nombre FROM users WHERE correo_electronico = ? AND activo = 1 AND verificado = 1', [email]);
+    if (!users.length || !isEmailConfigured()) return res.json(genericResponse);
 
     const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 60 * 60 * 1000);
+    const [previous] = await pool.query('SELECT reset_token, reset_token_expires FROM users WHERE id = ?', [users[0].id]);
 
     await pool.query(
-      'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE correo_electronico = ?',
-      [token, expires, email]
+      'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
+      [hashToken(token), expires, users[0].id]
     );
 
-    await enviarCorreoRecuperacion(email, token);
-
-    res.json({ message: 'Correo de recuperación enviado' });
+    try {
+      await enviarCorreoRecuperacion(email, token, users[0].nombre);
+    } catch (_emailError) {
+      await pool.query('UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?', [previous[0].reset_token, previous[0].reset_token_expires, users[0].id]);
+    }
+    return res.json(genericResponse);
   } catch (err) {
-    console.error('Error en forgotPassword:', err);
-    res.status(500).json({ message: 'Error al enviar el correo de recuperación' });
+    console.error(`[auth] No se pudo procesar la recuperación (${err.code || 'UNKNOWN'}).`);
+    return res.json(genericResponse);
   }
 };
 
@@ -175,7 +250,7 @@ const verificarCuenta = async (req, res) => {
     // Buscar usuario pendiente por token (sin validar expiración todavía)
     const [tokenCheck] = await pool.query(
       'SELECT * FROM pending_users WHERE token_verificacion = ?',
-      [token]
+      [hashToken(token)]
     );
 
     // Si no existe en absoluto
@@ -205,7 +280,7 @@ const verificarCuenta = async (req, res) => {
     }
 
     // Insertar usuario en la tabla final
-    await pool.query(
+    const [createdUser] = await pool.query(
   `INSERT INTO users (correo_electronico, password, nombre, apellido, rol, direccion, activo, verificado)
    VALUES (?, ?, ?, ?, ?, ?, 1, 1)`,
   [
@@ -221,10 +296,11 @@ const verificarCuenta = async (req, res) => {
 
     await pool.query('DELETE FROM pending_users WHERE id = ?', [pendingUser.id]);
 
-    await pool.query(
-      'INSERT INTO activities (descripcion, usuario) VALUES (?, ?)',
-      [`Verificación de cuenta del usuario: ${pendingUser.nombre}`, pendingUser.nombre]
-    );
+    await registrarActividad({
+      userId: createdUser.insertId,
+      tipo: 'usuario',
+      descripcion: 'Verificó su cuenta'
+    });
 
     res.json({ message: 'Tu cuenta ha sido verificada correctamente. Ahora puedes iniciar sesión.' });
 
@@ -247,20 +323,35 @@ const reenviarVerificacion = async (req, res) => {
       return res.status(404).json({ message: 'No se encontró una cuenta pendiente con ese correo.' });
     }
 
+    if (!isEmailConfigured()) {
+      return respondWithEmailError(res, { code: 'EMAIL_CONFIG_MISSING' });
+    }
+
     const newToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
 
     await pool.query(
       'UPDATE pending_users SET token_verificacion = ?, token_expires_at = ? WHERE id = ?',
-      [newToken, expiresAt, pendings[0].id]
+      [hashToken(newToken), expiresAt, pendings[0].id]
     );
 
-    const link = `${process.env.FRONTEND_URL}/verificar?token=${newToken}`;
-    await enviarCorreoVerificacion(correo_electronico, pendings[0].nombre, link);
+    try {
+      await enviarCorreoVerificacion(correo_electronico, pendings[0].nombre, newToken);
+    } catch (emailError) {
+      try {
+        await pool.query(
+          'UPDATE pending_users SET token_verificacion = ?, token_expires_at = ? WHERE id = ?',
+          [pendings[0].token_verificacion, pendings[0].token_expires_at, pendings[0].id]
+        );
+      } catch (restoreError) {
+        console.error(`[auth] No se pudo restaurar el token de verificación (${restoreError.code || 'DB_ERROR'}).`);
+      }
+      return respondWithEmailError(res, emailError);
+    }
 
     res.json({ message: 'Se ha reenviado el correo de verificación.' });
   } catch (err) {
-    console.error('Error al reenviar verificación:', err);
+    console.error(`[auth] Error al reenviar verificación (${err.code || 'UNKNOWN'}).`);
     res.status(500).json({ message: 'Error interno al reenviar verificación' });
   }
 };
@@ -270,29 +361,44 @@ const resetPassword = async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
 
+  if (!isPasswordValid(password)) {
+    return res.status(400).json({ message: PASSWORD_POLICY_MESSAGE });
+  }
+
+  const connection = await pool.getConnection();
   try {
-    const [users] = await pool.query(
+    await connection.beginTransaction();
+    const [users] = await connection.query(
       'SELECT * FROM users WHERE reset_token = ? AND reset_token_expires > NOW()',
-      [token]
+      [hashToken(token)]
     );
-    if (!users.length) return res.status(400).json({ message: 'Token inválido o expirado' });
+    if (!users.length) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Token inválido o expirado' });
+    }
 
     const hashed = await bcrypt.hash(password, 10);
 
-    await pool.query(
-      'UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?',
+    await connection.query(
+      'UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL, must_change_password = 0 WHERE id = ?',
       [hashed, users[0].id]
     );
-
-    res.json({ message: 'Contraseña restablecida correctamente' });
+    await connection.query('UPDATE sessions SET activo = 0 WHERE user_id = ?', [users[0].id]);
+    await connection.commit();
+    realtimeHub.disconnectUser(users[0].id, 'La contraseña se restableció. Inicia sesión nuevamente.');
+    return res.json({ message: 'Contraseña restablecida correctamente' });
   } catch (err) {
-    console.error('Error en resetPassword:', err);
-    res.status(500).json({ message: 'Error al restablecer la contraseña' });
+    await connection.rollback();
+    console.error(`[auth] Error al restablecer la contraseña (${err.code || 'UNKNOWN'}).`);
+    return res.status(500).json({ message: 'Error al restablecer la contraseña' });
+  } finally {
+    connection.release();
   }
 };
 
 module.exports = {
   login,
+  changeTemporaryPassword,
   register,
   forgotPassword,
   resetPassword,

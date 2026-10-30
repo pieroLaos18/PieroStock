@@ -11,13 +11,17 @@ import Login from '../views/LoginView.vue';
 import Register from '../views/RegisterView.vue'; // Importa el componente de registro
 import ForgotPasswordForm from '../components/ForgotPasswordForm.vue'; // Agrega esta línea
 import Activities from '../views/Activities.vue'; // Agrega esta línea
+import DemoView from '../views/DemoView.vue';
+import ChangeTemporaryPassword from '../views/ChangeTemporaryPassword.vue';
 
 // Definición de rutas de la aplicación
 const routes = [
   { path: '/', redirect: '/main' },
+  { path: '/demo', name: 'Demo', component: DemoView },
   { path: '/login', name: 'Login', component: Login },
   { path: '/register', name: 'Register', component: Register },
   { path: '/forgot-password', name: 'ForgotPassword', component: ForgotPasswordForm },
+  { path: '/change-password', name: 'ChangeTemporaryPassword', component: ChangeTemporaryPassword, meta: { requiresAuth: true } },
   {
     path: '/main',
     name: 'MainView',
@@ -55,6 +59,16 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const isAuthenticated = !!localStorage.getItem('authToken');
   const userRole = localStorage.getItem('userRole');
+  const mustChangePassword = localStorage.getItem('mustChangePassword') === 'true';
+
+  if (mustChangePassword && to.path !== '/change-password') {
+    next('/change-password');
+    return;
+  }
+  if (!mustChangePassword && to.path === '/change-password') {
+    next('/login');
+    return;
+  }
 
   // Redirigir /main a la ruta hija correcta según el rol
   if (to.path === '/main') {

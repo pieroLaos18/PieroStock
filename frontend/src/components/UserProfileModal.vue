@@ -1,6 +1,6 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-content" @click.stop>
+  <div class="modal-overlay" @click.self="closeModal">
+    <div class="modal-content profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" @click.stop>
       <!-- Header del modal -->
       <div class="modal-header">
         <div class="header-icon">
@@ -10,10 +10,10 @@
           </svg>
         </div>
         <div class="header-text">
-          <h2>Mi Perfil</h2>
+          <h2 id="profile-modal-title">Mi perfil</h2>
           <p class="header-subtitle">Gestiona tu información personal</p>
         </div>
-        <button class="close-btn" @click="$emit('close')">
+        <button class="close-btn" type="button" aria-label="Cerrar perfil" @click="closeModal">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -86,7 +86,6 @@
                 :src="getUserImage" 
                 alt="Foto de perfil" 
                 @error="handleImageError"
-                @load="handleImageLoad"
               />
               <div class="image-overlay">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -106,7 +105,7 @@
                 type="file" 
                 id="imageInput" 
                 @change="handleImageUpload" 
-                accept="image/*"
+                accept="image/jpeg,image/png,image/gif,image/webp"
                 style="display: none;"
               />
             </div>
@@ -174,12 +173,15 @@
               </svg>
               {{ updating ? 'Guardando...' : 'Guardar cambios' }}
             </button>
-            <button type="button" class="btn-secondary" @click="$emit('close')">
+            <button type="button" class="btn-secondary" @click="closeModal">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               Cancelar
             </button>
+          </div>
+          <div v-if="errorMessage" class="error-message" role="alert">
+            <i class="fas fa-circle-exclamation" aria-hidden="true"></i>{{ errorMessage }}
           </div>
         </form>
       </div>
@@ -198,6 +200,7 @@
 
 <script>
 import api from '@/services/api';
+import defaultUserImage from '@/assets/images/profile.png';
 
 export default {
   data() {
@@ -220,98 +223,63 @@ export default {
   },
   mounted() {
     this.cargarDatosUsuario();
+    window.addEventListener('keydown', this.handleDialogKeydown);
   },
-  watch: {
-    // Observar cambios en isVerified para debug
-    isVerified: {
-      handler(newValue) {
-        if (newValue) {
-          console.log('🔓 Usuario verificado, datos cargados:', {
-            id: this.user.id,
-            name: this.user.name,
-            email: this.user.email,
-            image: this.user.image,
-            processedImage: this.getUserImage
-          });
-        }
-      },
-      immediate: true
-    },
-    // Observar cambios en la imagen del usuario
-    'user.image': {
-      handler(newImage) {
-        console.log('🖼️ Imagen del usuario actualizada en modal:', newImage, '-> Procesada:', this.getUserImage);
-      },
-      immediate: true
-    }
+  beforeUnmount() {
+    window.removeEventListener('keydown', this.handleDialogKeydown);
+    this.revokePreview();
   },
   computed: {
     getUserImage() {
-      console.log('🖼️ Calculando getUserImage...', {
-        previewImage: this.previewImage,
-        userImage: this.user.image,
-        userImageType: typeof this.user.image
-      });
-      
       // Si hay una imagen de preview (nueva imagen seleccionada), usarla
       if (this.previewImage) {
-        console.log('📸 Usando preview image:', this.previewImage);
         return this.previewImage;
       }
       
       // Si hay imagen del usuario en localStorage, procesarla
       if (this.user.image && this.user.image !== 'null' && this.user.image !== '' && this.user.image !== 'undefined') {
+        if (this.user.image.startsWith('/src/assets/')) return defaultUserImage;
+        if (this.user.image.startsWith('/assets/')) return this.user.image;
         // Si la imagen ya tiene el dominio completo, usarla directamente
         if (this.user.image.startsWith('http')) {
-          console.log('🌐 Usando URL completa:', this.user.image);
+          if (/\/uploads\/+src\/assets\//i.test(this.user.image)) return defaultUserImage;
           return this.user.image;
         }
         // Si es una ruta relativa, agregar la URL base del API
         if (this.user.image.startsWith('/uploads/')) {
-          const fullUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${this.user.image}`;
-          console.log('📁 Construyendo URL desde ruta relativa:', fullUrl);
-          return fullUrl;
+          return `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')}${this.user.image}`;
         }
         // Si es solo el nombre del archivo, construir la ruta completa
-        const fullUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/uploads/${this.user.image}`;
-        console.log('📄 Construyendo URL desde nombre de archivo:', fullUrl);
-        return fullUrl;
+        return `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')}/uploads/${this.user.image.replace(/^\//, '')}`;
       }
       
       // Imagen por defecto
-      console.log('🖼️ Usando imagen por defecto');
-      return '/src/assets/images/profile.png';
+      return defaultUserImage;
     }
   },
   methods: {
     closeModal() {
+      if (this.updating) return;
+      this.revokePreview();
       this.$emit('close');
     },
+    handleDialogKeydown(event) {
+      if (event.key === 'Escape' && !this.updating) this.closeModal();
+    },
+    revokePreview() {
+      if (this.previewImage) URL.revokeObjectURL(this.previewImage);
+      this.previewImage = '';
+    },
     cargarDatosUsuario() {
-      this.user.id = localStorage.getItem('userId');
-      this.user.name = localStorage.getItem('userName');
-      this.user.email = localStorage.getItem('userEmail');
-      this.user.image = localStorage.getItem('userImage');
+      this.user.id = localStorage.getItem('userId') || '';
+      this.user.name = localStorage.getItem('userName') || '';
+      this.user.email = localStorage.getItem('userEmail') || '';
+      this.user.image = localStorage.getItem('userImage') || '';
       
       // Limpiar el previewImage para que use la imagen del usuario
-      this.previewImage = '';
+      this.revokePreview();
       this.selectedFile = null;
       
-      // Debug mejorado
-      console.log('👤 Datos del usuario cargados en modal:', {
-        id: this.user.id,
-        name: this.user.name,
-        email: this.user.email,
-        image: this.user.image,
-        imageIsNull: this.user.image === 'null',
-        imageIsEmpty: this.user.image === '',
-        processedImage: this.getUserImage
-      });
-      
-      // Forzar actualización reactiva
-      this.$nextTick(() => {
-        console.log('🔄 getUserImage después de nextTick:', this.getUserImage);
-      });
     },
     async verificarPassword() {
       if (!this.inputPassword.trim()) {
@@ -352,15 +320,20 @@ export default {
     handleImageUpload(event) {
       const file = event.target.files[0];
       if (file) {
+        this.revokePreview();
+        this.selectedFile = null;
         // Validar tipo de archivo
-        if (!file.type.startsWith('image/')) {
-          this.errorMessage = 'Por favor, selecciona un archivo de imagen válido';
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+          this.errorMessage = 'Usa una imagen JPG, PNG, GIF o WebP.';
+          event.target.value = '';
           return;
         }
 
         // Validar tamaño (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
-          this.errorMessage = 'La imagen debe ser menor a 5MB';
+          this.errorMessage = 'La imagen debe pesar menos de 5 MB.';
+          event.target.value = '';
           return;
         }
 
@@ -370,23 +343,22 @@ export default {
       }
     },
     handleImageError(event) {
-      console.warn('❌ Error cargando imagen del usuario en modal:', event.target.src);
-      // Fallback a imagen por defecto
-      event.target.src = '/src/assets/images/profile.png';
-    },
-    handleImageLoad(event) {
-      console.log('✅ Imagen del usuario cargada en modal:', event.target.src);
+      const image = event.currentTarget;
+      const defaultImageUrl = new URL(defaultUserImage, window.location.href).href;
+      if (image.src !== defaultImageUrl) image.src = defaultImageUrl;
     },
     async actualizarPerfil() {
-      if (!this.user.name.trim() || !this.user.email.trim()) {
-        this.errorMessage = 'Todos los campos son obligatorios';
+      const name = this.user.name.trim();
+      const email = this.user.email.trim().toLowerCase();
+      if (!name || !email) {
+        this.errorMessage = 'Completa tu nombre y correo electrónico.';
         return;
       }
 
       // Validar email
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(this.user.email)) {
-        this.errorMessage = 'Por favor, ingresa un email válido';
+      if (name.length > 100 || email.length > 254 || !emailRegex.test(email)) {
+        this.errorMessage = name.length > 100 ? 'El nombre debe tener 100 caracteres o menos.' : 'Ingresa un correo electrónico válido.';
         return;
       }
 
@@ -395,16 +367,14 @@ export default {
 
       try {
         const formData = new FormData();
-        formData.append('name', this.user.name.trim());
-        formData.append('email', this.user.email.trim());
+        formData.append('name', name);
+        formData.append('email', email);
         if (this.selectedFile) {
           formData.append('image', this.selectedFile);
         }
 
         const res = await api.put(`/users/${this.user.id}/profile`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
 
         // Actualiza el localStorage
@@ -416,17 +386,12 @@ export default {
         
         // Emitir evento para que el componente padre actualice la UI
         this.$emit('profile-updated', res.data);
-
-        // Cerrar modal después de un breve delay
-        setTimeout(() => {
-          this.$emit('close');
-          // Opcional: recargar página para reflejar cambios
-          window.location.reload();
-        }, 1500);
+        this.revokePreview();
+        this.$emit('close');
 
       } catch (error) {
         console.error('Error al actualizar perfil:', error);
-        this.errorMessage = error.response?.data?.message || 'Error al actualizar el perfil. Inténtalo más tarde.';
+        this.errorMessage = error.response?.data?.message || error.response?.data?.error || 'No se pudo actualizar el perfil. Inténtalo de nuevo.';
       } finally {
         this.updating = false;
       }

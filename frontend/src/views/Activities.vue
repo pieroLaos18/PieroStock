@@ -1,114 +1,67 @@
 <template>
   <div class="dynamic-content activities-page">
-    <!-- Cabecera moderna -->
-    <div class="activities-header">
-      <div class="header-content">
-        <div class="header-left">
-          <div class="header-icon">
-            <i class="fas fa-history"></i>
-          </div>
-          <div class="header-text">
-            <h1>Historial de Actividades</h1>
-            <p class="header-subtitle">Registro completo de todas las acciones realizadas en el sistema</p>
-            <div class="header-stats">
-              <div class="stat-item">
-                <span class="stat-number">{{ totalActividades }}</span>
-                <span class="stat-label">Total</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ actividadesHoy }}</span>
-                <span class="stat-label">Hoy</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-number">{{ tiposUnicos }}</span>
-                <span class="stat-label">Tipos</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="header-actions">
-          <button class="btn-refresh" @click="refreshActivities" :disabled="loading">
-            <i class="fas fa-sync-alt" :class="{ 'fa-spin': loading }"></i>
-            <span>{{ loading ? 'Cargando...' : 'Actualizar' }}</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Filtros -->
-      <div class="filters-section">
-        <div class="search-container">
-          <div class="search-wrapper">
-            <i class="fas fa-search search-icon"></i>
-            <input 
-              v-model="searchTerm" 
-              type="text" 
-              class="search-input" 
-              placeholder="Buscar actividades..."
-              @input="filterActivities"
-            />
-            <button v-if="searchTerm" @click="clearSearch" class="clear-search">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-        </div>
-
-        <div class="filter-container">
-          <div class="filter-wrapper">
-            <i class="fas fa-filter filter-icon"></i>
-            <select v-model="selectedType" @change="filterActivities" class="type-select">
-              <option value="">Todos los tipos</option>
-              <option v-for="tipo in tiposDisponibles" :key="tipo" :value="tipo">
-                {{ getActivityTypeName(tipo) }}
-              </option>
-            </select>
-          </div>
-        </div>
-
-        <div class="filter-container">
-          <div class="filter-wrapper">
-            <i class="fas fa-calendar filter-icon"></i>
-            <select v-model="selectedPeriod" @change="filterActivities" class="period-select">
-              <option value="">Todo el período</option>
-              <option value="today">Hoy</option>
-              <option value="week">Esta semana</option>
-              <option value="month">Este mes</option>
-              <option value="year">Este año</option>
-            </select>
-          </div>
-        </div>
-      </div>
+    <div class="page-heading">
+      <div><p class="eyebrow">AUDITORÍA</p><h1>Actividad</h1><p>Revisa quién hizo cada cambio y cuándo ocurrió.</p></div>
+      <button class="secondary-button" type="button" @click="refreshActivities" :disabled="isRefreshing"><i class="fas fa-rotate" :class="{ 'fa-spin': isRefreshing }"></i> {{ isRefreshing ? 'Actualizando…' : 'Actualizar' }}</button>
     </div>
 
+    <section class="metric-grid compact-metrics">
+      <article class="metric-card"><div class="metric-top"><span>Movimientos</span><span class="metric-icon teal"><i class="fas fa-list-check"></i></span></div><strong>{{ totalActividades }}</strong><small class="metric-foot">En el historial</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Hoy</span><span class="metric-icon blue"><i class="fas fa-clock"></i></span></div><strong>{{ actividadesHoy }}</strong><small class="metric-foot">Acciones de hoy</small></article>
+      <article class="metric-card"><div class="metric-top"><span>Tipos de acción</span><span class="metric-icon violet"><i class="fas fa-shapes"></i></span></div><strong>{{ tiposUnicos }}</strong><small class="metric-foot">Eventos registrados</small></article>
+    </section>
+
+    <section class="demo-panel filters-panel">
+      <div class="table-toolbar activities-toolbar">
+        <div class="search-box"><i class="fas fa-search"></i><input v-model="searchTerm" type="search" placeholder="Buscar actividad o usuario" aria-label="Buscar actividad o usuario" @input="filterActivities" /><button v-if="searchTerm" type="button" @click="clearSearch" aria-label="Limpiar búsqueda"><i class="fas fa-times"></i></button></div>
+        <select v-model="selectedType" @change="filterActivities" class="type-select">
+          <option value="">Todos los tipos</option>
+          <option v-for="tipo in tiposDisponibles" :key="tipo" :value="tipo">{{ getActivityTypeName(tipo) }}</option>
+        </select>
+        <select v-model="selectedPeriod" @change="filterActivities" class="period-select">
+          <option value="">Todo el período</option>
+          <option value="today">Hoy</option>
+          <option value="week">Esta semana</option>
+          <option value="month">Este mes</option>
+          <option value="year">Este año</option>
+        </select>
+      </div>
+    </section>
+
     <!-- Loader animado -->
-    <div v-if="loading" class="loader"></div>
+    <div v-if="loading" class="activities-loading" role="status">Cargando historial…</div>
 
     <!-- Lista de actividades -->
     <div v-else class="activities-container">
+      <div v-if="loadError && actividades.length" class="activities-inline-warning" role="status"><i class="fas fa-triangle-exclamation"></i><span>{{ loadError }} Se conserva la información ya cargada.</span><button type="button" @click="refreshActivities" :disabled="isRefreshing">Reintentar</button></div>
       <div v-if="filteredActivities.length === 0" class="no-data-msg">
         <i class="fas fa-clipboard-list"></i>
-        <p v-if="searchTerm || selectedType || selectedPeriod">
+        <p v-if="loadError">{{ loadError }}</p>
+        <p v-else-if="hasActiveFilters">
           No se encontraron actividades con los filtros aplicados
         </p>
         <p v-else>No hay actividades registradas</p>
-        <button v-if="searchTerm || selectedType || selectedPeriod" @click="clearAllFilters" class="btn-clear-filters">
+        <button v-if="loadError" type="button" @click="refreshActivities" class="btn-clear-filters" :disabled="isRefreshing">
+          <i class="fas fa-rotate"></i>Reintentar carga
+        </button>
+        <button v-else-if="hasActiveFilters" type="button" @click="clearAllFilters" class="btn-clear-filters">
           <i class="fas fa-times"></i>
           Limpiar filtros
         </button>
       </div>
 
-      <div v-else class="activities-list">
+      <div v-else class="activities-list demo-panel activity-list-panel">
         <div 
           v-for="activity in paginatedActivities" 
           :key="activity.id" 
-          class="activity-item"
+          class="activity-item activity-row"
           :class="'activity-' + activity.tipo"
         >
-          <div class="activity-icon">
+          <div class="activity-icon activity-mark">
             <i :class="getActivityIcon(activity.tipo)"></i>
           </div>
           
-          <div class="activity-content">
+          <div class="activity-content activity-copy">
             <div class="activity-header">
               <h3 class="activity-title">{{ activity.descripcion }}</h3>
               <div class="activity-type" :class="'type-' + activity.tipo">
@@ -146,17 +99,21 @@
       <!-- Paginación -->
       <div v-if="totalPages > 1" class="pagination">
         <button 
+          type="button"
           @click="currentPage = 1" 
           :disabled="currentPage === 1"
           class="pagination-btn"
+          aria-label="Primera página"
         >
           <i class="fas fa-angle-double-left"></i>
         </button>
         
         <button 
+          type="button"
           @click="currentPage--" 
           :disabled="currentPage === 1"
           class="pagination-btn"
+          aria-label="Página anterior"
         >
           <i class="fas fa-angle-left"></i>
         </button>
@@ -167,17 +124,21 @@
         </div>
 
         <button 
+          type="button"
           @click="currentPage++" 
           :disabled="currentPage === totalPages"
           class="pagination-btn"
+          aria-label="Página siguiente"
         >
           <i class="fas fa-angle-right"></i>
         </button>
         
         <button 
+          type="button"
           @click="currentPage = totalPages" 
           :disabled="currentPage === totalPages"
           class="pagination-btn"
+          aria-label="Última página"
         >
           <i class="fas fa-angle-double-right"></i>
         </button>
@@ -194,13 +155,19 @@
 
 <script>
 import api from '@/services/api';
+import realTimeService from '@/services/realTimeService';
 
 export default {
   name: 'Activities',
   data() {
     return {
       // Estado de carga
-      loading: false,
+      loading: true,
+      isRefreshing: false,
+      hasLoadedActivities: false,
+      loadError: '',
+      notificationTimer: null,
+      realtimeRefreshTimer: null,
       
       // Datos principales
       actividades: [],
@@ -243,7 +210,12 @@ export default {
     },
     
     tiposDisponibles() {
-      return [...new Set(this.actividades.map(act => act.tipo).filter(Boolean))];
+      return [...new Set(this.actividades.map(act => act.tipo).filter(Boolean))]
+        .sort((a, b) => this.getActivityTypeName(a).localeCompare(this.getActivityTypeName(b), 'es'));
+    },
+
+    hasActiveFilters() {
+      return Boolean(this.searchTerm.trim() || this.selectedType || this.selectedPeriod);
     },
     
     totalPages() {
@@ -259,43 +231,65 @@ export default {
   
   async mounted() {
     this.$emit('set-title', 'Actividades');
+    realTimeService.addListener('data_changed', this.handleRealtimeChange);
     await this.loadActivities();
+  },
+  beforeUnmount() {
+    realTimeService.removeListener('data_changed', this.handleRealtimeChange);
+    clearTimeout(this.realtimeRefreshTimer);
+    clearTimeout(this.notificationTimer);
   },
   
   methods: {
-    async loadActivities() {
-      this.loading = true;
+    handleRealtimeChange(change = {}) {
+      const entities = change.entities || [];
+      if (entities.length && !entities.includes('activities')) return;
+      clearTimeout(this.realtimeRefreshTimer);
+      this.realtimeRefreshTimer = setTimeout(() => this.loadActivities({ notify: false }), 180);
+    },
+    async loadActivities({ notify = false } = {}) {
+      const initialLoad = !this.hasLoadedActivities;
+      this.loading = initialLoad;
+      this.isRefreshing = true;
       try {
         const response = await api.get('/actividades');
-        this.actividades = response.data.sort((a, b) => 
-          new Date(b.fecha) - new Date(a.fecha)
-        );
-        this.filteredActivities = [...this.actividades];
-        this.showNotification('Actividades cargadas correctamente', 'success');
+        const rows = Array.isArray(response.data) ? response.data : response.data?.actividades;
+        this.actividades = (Array.isArray(rows) ? rows : []).sort((a, b) => {
+          const timeA = new Date(a.fecha).getTime();
+          const timeB = new Date(b.fecha).getTime();
+          if (!Number.isFinite(timeA)) return 1;
+          if (!Number.isFinite(timeB)) return -1;
+          return timeB - timeA;
+        });
+        this.hasLoadedActivities = true;
+        this.loadError = '';
+        this.filterActivities({ resetPage: false });
+        this.currentPage = Math.min(this.currentPage, Math.max(this.totalPages, 1));
+        if (notify) this.showNotification('Historial actualizado.', 'success');
       } catch (error) {
         console.error('Error cargando actividades:', error);
-        this.actividades = [];
-        this.filteredActivities = [];
-        this.showNotification('Error al cargar las actividades', 'error', 'fas fa-exclamation-triangle');
+        this.loadError = error.response?.status === 403
+          ? 'Tu rol no tiene permiso para consultar la actividad.'
+          : 'No se pudo actualizar el historial. Revisa tu conexión e inténtalo de nuevo.';
       } finally {
         this.loading = false;
+        this.isRefreshing = false;
       }
     },
     
     async refreshActivities() {
-      await this.loadActivities();
+      await this.loadActivities({ notify: true });
     },
     
-    filterActivities() {
+    filterActivities({ resetPage = true } = {}) {
       let filtered = [...this.actividades];
       
       // Filtro por término de búsqueda
       if (this.searchTerm) {
-        const term = this.searchTerm.toLowerCase();
+        const term = this.searchTerm.trim().toLowerCase();
         filtered = filtered.filter(activity => 
-          activity.descripcion?.toLowerCase().includes(term) ||
-          activity.usuario?.toLowerCase().includes(term) ||
-          activity.detalles?.toLowerCase().includes(term)
+          [activity.descripcion, activity.usuario, activity.detalles]
+            .some(value => String(value || '').toLowerCase().includes(term))
         );
       }
       
@@ -307,39 +301,42 @@ export default {
       // Filtro por período
       if (this.selectedPeriod) {
         const now = new Date();
-        const activityDate = new Date();
+        const startOfWeek = new Date(now);
+        startOfWeek.setHours(0, 0, 0, 0);
+        const dayOffset = (startOfWeek.getDay() + 6) % 7;
+        startOfWeek.setDate(startOfWeek.getDate() - dayOffset);
         
         switch (this.selectedPeriod) {
           case 'today':
             filtered = filtered.filter(activity => {
               const date = new Date(activity.fecha);
-              return date.toDateString() === now.toDateString();
+              return Number.isFinite(date.getTime()) && date.toDateString() === now.toDateString();
             });
             break;
           case 'week':
-            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-            filtered = filtered.filter(activity => 
-              new Date(activity.fecha) >= weekAgo
-            );
+            filtered = filtered.filter(activity => {
+              const date = new Date(activity.fecha);
+              return Number.isFinite(date.getTime()) && date >= startOfWeek && date <= now;
+            });
             break;
           case 'month':
             filtered = filtered.filter(activity => {
               const date = new Date(activity.fecha);
-              return date.getMonth() === now.getMonth() && 
+              return Number.isFinite(date.getTime()) && date.getMonth() === now.getMonth() &&
                      date.getFullYear() === now.getFullYear();
             });
             break;
           case 'year':
             filtered = filtered.filter(activity => {
               const date = new Date(activity.fecha);
-              return date.getFullYear() === now.getFullYear();
+              return Number.isFinite(date.getTime()) && date.getFullYear() === now.getFullYear();
             });
             break;
         }
       }
       
       this.filteredActivities = filtered;
-      this.currentPage = 1;
+      if (resetPage) this.currentPage = 1;
     },
     
     clearSearch() {
@@ -391,6 +388,7 @@ export default {
     
     formatDateTime(dateString) {
       const date = new Date(dateString);
+      if (!Number.isFinite(date.getTime())) return 'Fecha no disponible';
       return date.toLocaleString('es-ES', {
         year: 'numeric',
         month: 'short',
@@ -402,6 +400,7 @@ export default {
     
     formatDate(dateString) {
       const date = new Date(dateString);
+      if (!Number.isFinite(date.getTime())) return '—';
       return date.toLocaleDateString('es-ES', {
         day: '2-digit',
         month: 'short',
@@ -411,6 +410,7 @@ export default {
     
     formatTime(dateString) {
       const date = new Date(dateString);
+      if (!Number.isFinite(date.getTime())) return '—';
       return date.toLocaleTimeString('es-ES', {
         hour: '2-digit',
         minute: '2-digit'
@@ -419,8 +419,9 @@ export default {
     
     formatTimeAgo(dateString) {
       const date = new Date(dateString);
+      if (!Number.isFinite(date.getTime())) return 'Fecha no disponible';
       const now = new Date();
-      const diffInSeconds = Math.floor((now - date) / 1000);
+      const diffInSeconds = Math.max(0, Math.floor((now - date) / 1000));
 
       if (diffInSeconds < 60) {
         return 'Hace unos momentos';
@@ -443,6 +444,7 @@ export default {
     },
     
     showNotification(message, type = 'success', icon = 'fas fa-check-circle') {
+      clearTimeout(this.notificationTimer);
       this.notification = {
         show: true,
         message,
@@ -450,7 +452,7 @@ export default {
         icon
       };
       
-      setTimeout(() => {
+      this.notificationTimer = setTimeout(() => {
         this.notification.show = false;
       }, 4000);
     }
