@@ -1,9 +1,9 @@
 <template>
   <aside id="app-sidebar" :class="['sidebar', 'demo-sidebar', { collapsed: shouldBeCollapsed, 'mobile-hidden': isMobileHidden }]" aria-label="Navegación principal" :aria-hidden="isMobileHidden" :inert="isMobileHidden">
     <div class="demo-brand-row">
-      <router-link class="demo-brand" :to="homeRoute" aria-label="PieroStock, ir a la página principal" @click="closeMobileMenu">
+      <router-link class="demo-brand" :to="homeRoute" aria-label="ERP ligero, ir a la página principal" @click="closeMobileMenu">
         <span class="demo-brand-mark"><i class="fas fa-cube" aria-hidden="true"></i></span>
-        <span v-if="!shouldBeCollapsed"><strong>PieroStock</strong><small>Ventas e inventario</small></span>
+        <span v-if="!shouldBeCollapsed"><strong>ERP ligero</strong><small>Ventas e inventario</small></span>
       </router-link>
       <button v-if="!isSmallScreen" class="demo-collapse-toggle" type="button" :aria-label="isCollapsed ? 'Expandir menú' : 'Contraer menú'" :title="isCollapsed ? 'Expandir menú' : 'Contraer menú'" @click="toggleSidebar">
         <i :class="isCollapsed ? 'fas fa-angles-right' : 'fas fa-angles-left'" aria-hidden="true"></i>

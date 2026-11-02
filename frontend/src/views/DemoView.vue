@@ -4,13 +4,13 @@
       <router-link v-if="!standalone" to="/login" class="demo-brand">
         <span class="demo-brand-mark"><i class="fas fa-cube"></i></span>
         <span
-          ><strong>PieroStock</strong><small>Ventas e inventario</small></span
+          ><strong>ERP ligero</strong><small>Ventas e inventario</small></span
         >
       </router-link>
-      <div v-else class="demo-brand" aria-label="PieroStock, demo pública">
+      <div v-else class="demo-brand" aria-label="ERP ligero, demo pública">
         <span class="demo-brand-mark"><i class="fas fa-cube"></i></span>
         <span
-          ><strong>PieroStock</strong><small>Ventas e inventario</small></span
+          ><strong>ERP ligero</strong><small>Ventas e inventario</small></span
         >
       </div>
 
