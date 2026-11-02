@@ -1,6 +1,6 @@
 # ERP ligero — ventas e inventario
 
-Aplicación web para administrar productos, stock, ventas, usuarios, reportes y actividad. La interfaz usa Vue 3 + Vite; la API usa Node.js + Express; los datos se guardan en MySQL.
+ERP ligero para gestionar productos, inventario, ventas, usuarios, reportes y actividad. La interfaz usa Vue 3 + Vite; la API usa Node.js + Express; los datos se guardan en MySQL.
 
 ## Demo interactiva
 
